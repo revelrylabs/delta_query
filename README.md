@@ -1,5 +1,10 @@
 # DeltaQuery
 
+[![Hex.pm](https://img.shields.io/hexpm/v/delta_query.svg)](https://hex.pm/packages/delta_query)
+[![Docs](https://img.shields.io/badge/docs-hexdocs-blue.svg)](https://hexdocs.pm/delta_query)
+
+> **Note:** This library is in early development (pre-1.0). The API may change between minor versions.
+
 Elixir client for querying [Delta Sharing](https://delta.io/sharing/) tables.
 
 Delta Sharing is an open protocol for secure data sharing across organizations. This library provides a high-level client that queries shared Delta tables, downloads Parquet files, and returns data as Explorer DataFrames.
