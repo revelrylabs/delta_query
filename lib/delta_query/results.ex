@@ -116,8 +116,7 @@ defmodule DeltaQuery.Results do
       {:ok, searched} = Results.text_search(results, "waterproofing", ["subject", "question", "answer"])
   """
   @spec text_search(t(), String.t(), list(String.t())) :: {:ok, t()} | {:error, String.t()}
-  def text_search(%__MODULE__{} = result, search_text, columns)
-      when is_binary(search_text) and is_list(columns) do
+  def text_search(%__MODULE__{} = result, search_text, columns) when is_binary(search_text) and is_list(columns) do
     if search_text == "" do
       {:ok, result}
     else

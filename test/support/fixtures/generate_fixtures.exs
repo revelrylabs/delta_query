@@ -1,6 +1,7 @@
 Mix.install([{:explorer, "~> 0.10"}])
 
 defmodule FixtureGenerator do
+  @moduledoc false
   def generate_all do
     projects_data = [
       %{
@@ -85,7 +86,7 @@ defmodule FixtureGenerator do
 
     commitments_data = [
       %{
-        "commitment_id" => 10001,
+        "commitment_id" => 10_001,
         "company_id" => 100,
         "project_id" => 1001,
         "vendor_id" => 1001,
@@ -99,7 +100,7 @@ defmodule FixtureGenerator do
         "contract_estimated_completion_date" => ~D[2024-06-30]
       },
       %{
-        "commitment_id" => 10002,
+        "commitment_id" => 10_002,
         "company_id" => 100,
         "project_id" => 1001,
         "vendor_id" => 1002,
@@ -113,7 +114,7 @@ defmodule FixtureGenerator do
         "contract_estimated_completion_date" => ~D[2024-05-15]
       },
       %{
-        "commitment_id" => 10003,
+        "commitment_id" => 10_003,
         "company_id" => 100,
         "project_id" => 1002,
         "vendor_id" => 1003,
@@ -127,7 +128,7 @@ defmodule FixtureGenerator do
         "contract_estimated_completion_date" => ~D[2024-08-31]
       },
       %{
-        "commitment_id" => 10004,
+        "commitment_id" => 10_004,
         "company_id" => 100,
         "project_id" => 1002,
         "vendor_id" => 1001,
@@ -141,7 +142,7 @@ defmodule FixtureGenerator do
         "contract_estimated_completion_date" => ~D[2024-07-15]
       },
       %{
-        "commitment_id" => 10005,
+        "commitment_id" => 10_005,
         "company_id" => 100,
         "project_id" => 1003,
         "vendor_id" => 1004,
@@ -155,7 +156,7 @@ defmodule FixtureGenerator do
         "contract_estimated_completion_date" => ~D[2024-11-30]
       },
       %{
-        "commitment_id" => 10006,
+        "commitment_id" => 10_006,
         "company_id" => 100,
         "project_id" => 1003,
         "vendor_id" => 1005,
@@ -169,7 +170,7 @@ defmodule FixtureGenerator do
         "contract_estimated_completion_date" => ~D[2024-12-15]
       },
       %{
-        "commitment_id" => 10007,
+        "commitment_id" => 10_007,
         "company_id" => 100,
         "project_id" => 1001,
         "vendor_id" => 1003,
@@ -183,7 +184,7 @@ defmodule FixtureGenerator do
         "contract_estimated_completion_date" => nil
       },
       %{
-        "commitment_id" => 10008,
+        "commitment_id" => 10_008,
         "company_id" => 100,
         "project_id" => 1002,
         "vendor_id" => 1001,

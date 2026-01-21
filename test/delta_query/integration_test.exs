@@ -217,7 +217,7 @@ defmodule DeltaQuery.IntegrationTest do
       rows = DeltaQuery.to_rows(rooftech_commitments)
 
       assert length(rows) == 3
-      assert Enum.map(rows, & &1["project_id"]) |> Enum.sort() == [1001, 1002, 1002]
+      assert rows |> Enum.map(& &1["project_id"]) |> Enum.sort() == [1001, 1002, 1002]
     end
   end
 
@@ -248,7 +248,7 @@ defmodule DeltaQuery.IntegrationTest do
       rows = DeltaQuery.to_rows(filtered)
 
       assert length(rows) == 2
-      assert Enum.all?(rows, &(&1["start_date"] > ~D[2024-02-01]))
+      assert Enum.all?(rows, &Date.after?(&1["start_date"], ~D[2024-02-01]))
     end
 
     test "handles numeric comparisons with decimals" do

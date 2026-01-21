@@ -26,9 +26,9 @@ defmodule DeltaQuery.Client do
   Example predicates: `["project_id = 123", "status = 'open'", "created_at > '2024-01-01'"]`
   """
 
-  require Logger
-
   alias DeltaQuery.Config
+
+  require Logger
 
   defstruct [:endpoint, :bearer_token, :finch_name]
 
@@ -228,20 +228,13 @@ defmodule DeltaQuery.Client do
   defp maybe_add_predicates(body, []), do: body
   defp maybe_add_predicates(body, predicates), do: Map.put(body, "predicateHints", predicates)
 
-  defp download_and_parse_parquet_df(
-         %{"url" => url} = _file,
-         parsed_predicates,
-         columns,
-         finch_name
-       ) do
+  defp download_and_parse_parquet_df(%{"url" => url} = _file, parsed_predicates, columns, finch_name) do
     case :get |> Finch.build(url) |> Finch.request(finch_name) do
       {:ok, %Finch.Response{status: 200, body: parquet_data}} ->
         parse_parquet_to_df(parquet_data, parsed_predicates, columns)
 
       {:ok, %Finch.Response{status: status, body: body}} ->
-        Logger.error(
-          "failed to download parquet file: status=#{status} preview=#{String.slice(body, 0..100)}"
-        )
+        Logger.error("failed to download parquet file: status=#{status} preview=#{String.slice(body, 0..100)}")
 
         {:error, {:download_failed, status}}
 

@@ -1,0 +1,35 @@
+name: Deploy
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: test and deploy
+    runs-on: ubuntu-22.04
+    env:
+      HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+      MIX_ENV: test
+    strategy:
+      matrix:
+        otp: ["25.2"]
+        elixir: ["1.15.6"]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{matrix.otp}}
+          elixir-version: ${{matrix.elixir}}
+      - name: Restore dependencies cache
+        uses: actions/cache@v3
+        with:
+          path: deps
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+      - name: Install dependencies
+        run: mix deps.get
+      - name: Run tests
+        run: mix test
+      - name: Deploy package
+        run: mix hex.publish --yes
+        
