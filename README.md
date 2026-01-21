@@ -23,7 +23,7 @@ end
 
 ## Setup
 
-1. Add Finch to your application supervision tree:
+1. Ensure you have a Finch pool running. If you already have one in your app, you can reuse it. Otherwise, add one to your supervision tree:
 
 ```elixir
 children = [
@@ -38,7 +38,8 @@ config :delta_query, :config,
   endpoint: System.get_env("DELTA_SHARING_ENDPOINT"),
   bearer_token: System.get_env("DELTA_SHARING_BEARER_TOKEN"),
   share: "my_share",
-  schema: "public"
+  schema: "public",
+  finch_name: :delta_query_finch  # or your existing Finch pool name
 ```
 
 ## Usage

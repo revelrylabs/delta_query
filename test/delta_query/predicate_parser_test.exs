@@ -3,6 +3,8 @@ defmodule DeltaQuery.PredicateParserTest do
 
   alias DeltaQuery.PredicateParser
 
+  doctest PredicateParser
+
   describe "parse_predicate/1" do
     test "parses equality with integer" do
       assert {:ok, {:eq, "project_id", 123}} = PredicateParser.parse_predicate("project_id = 123")
