@@ -164,6 +164,54 @@ defmodule DeltaQuery.ResultsTest do
     end
   end
 
+  describe "count/1" do
+    test "returns number of rows" do
+      results = make_results(%{"id" => [1, 2, 3]})
+      assert Results.count(results) == 3
+    end
+
+    test "returns 0 for empty results" do
+      results = make_results(%{"id" => []})
+      assert Results.count(results) == 0
+    end
+  end
+
+  describe "empty?/1" do
+    test "returns true for empty results" do
+      results = make_results(%{"id" => []})
+      assert Results.empty?(results)
+    end
+
+    test "returns false for non-empty results" do
+      results = make_results(%{"id" => [1]})
+      refute Results.empty?(results)
+    end
+  end
+
+  describe "first/1" do
+    test "returns first row as map" do
+      results = make_results(%{"id" => [1, 2], "name" => ["a", "b"]})
+      assert Results.first(results) == %{"id" => 1, "name" => "a"}
+    end
+
+    test "returns nil for empty results" do
+      results = make_results(%{"id" => []})
+      assert Results.first(results) == nil
+    end
+  end
+
+  describe "sum/2" do
+    test "sums a numeric column" do
+      results = make_results(%{"amount" => [10, 20, 30]})
+      assert Results.sum(results, "amount") == 60
+    end
+
+    test "returns 0 for non-existent column" do
+      results = make_results(%{"id" => [1, 2]})
+      assert Results.sum(results, "missing") == 0
+    end
+  end
+
   describe "aggregate_by_column/2" do
     test "groups and counts by column" do
       results =

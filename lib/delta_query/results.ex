@@ -76,6 +76,58 @@ defmodule DeltaQuery.Results do
   def to_rows(%__MODULE__{dataframe: df}), do: Explorer.DataFrame.to_rows(df)
 
   @doc """
+  Return the number of rows in the results.
+
+  ## Examples
+
+      results |> Results.count()
+      # => 42
+  """
+  @spec count(t()) :: non_neg_integer()
+  def count(%__MODULE__{dataframe: df}), do: Explorer.DataFrame.n_rows(df)
+
+  @doc """
+  Check if results are empty.
+
+  ## Examples
+
+      results |> Results.empty?()
+      # => false
+  """
+  @spec empty?(t()) :: boolean()
+  def empty?(%__MODULE__{} = results), do: count(results) == 0
+
+  @doc """
+  Return the first row as a map, or nil if empty.
+
+  ## Examples
+
+      results |> Results.first()
+      # => %{"id" => 1, "name" => "Project A"}
+  """
+  @spec first(t()) :: map() | nil
+  def first(%__MODULE__{} = results) do
+    results |> to_rows() |> List.first()
+  end
+
+  @doc """
+  Sum a numeric column, returning 0 if the column doesn't exist.
+
+  ## Examples
+
+      results |> Results.sum("amount")
+      # => 12500.0
+  """
+  @spec sum(t(), String.t()) :: number()
+  def sum(%__MODULE__{dataframe: df}, column) do
+    if column in Explorer.DataFrame.names(df) do
+      Explorer.Series.sum(df[column])
+    else
+      0
+    end
+  end
+
+  @doc """
   Apply additional predicate filters to already-fetched results.
 
   **Prefer `Query.where/2` for initial filtering.** This function applies filters in-memory

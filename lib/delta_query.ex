@@ -193,6 +193,50 @@ defmodule DeltaQuery do
   defdelegate aggregate_by_column(results, column), to: Results
 
   @doc """
+  Return the number of rows in the results.
+
+  ## Examples
+
+      DeltaQuery.count(results)
+      # => 42
+  """
+  @spec count(Results.t()) :: non_neg_integer()
+  defdelegate count(results), to: Results
+
+  @doc """
+  Check if results are empty.
+
+  ## Examples
+
+      DeltaQuery.empty?(results)
+      # => false
+  """
+  @spec empty?(Results.t()) :: boolean()
+  defdelegate empty?(results), to: Results
+
+  @doc """
+  Return the first row as a map, or nil if empty.
+
+  ## Examples
+
+      DeltaQuery.first(results)
+      # => %{"id" => 1, "name" => "Project A"}
+  """
+  @spec first(Results.t()) :: map() | nil
+  defdelegate first(results), to: Results
+
+  @doc """
+  Sum a numeric column, returning 0 if the column doesn't exist.
+
+  ## Examples
+
+      DeltaQuery.sum(results, "amount")
+      # => 12500.0
+  """
+  @spec sum(Results.t(), String.t()) :: number()
+  defdelegate sum(results, column), to: Results
+
+  @doc """
   Create a configuration struct.
 
   ## Options
