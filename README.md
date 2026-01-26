@@ -7,7 +7,7 @@
 
 Elixir client for querying [Delta Sharing](https://delta.io/sharing/) tables.
 
-Delta Sharing is an open protocol for secure data sharing across organizations. This library provides a high-level client that queries shared Delta tables, downloads Parquet files, and returns data as Explorer DataFrames.
+Delta Sharing is an open protocol for secure data sharing across organizations. This library provides a high-level client for querying shared Delta tables. Results are returned as Elixir data structures, with optional access to the underlying Explorer DataFrames.
 
 ## Installation
 
