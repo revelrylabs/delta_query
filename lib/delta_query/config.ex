@@ -10,8 +10,7 @@ defmodule DeltaQuery.Config do
         endpoint: "https://...",
         bearer_token: "...",
         share: "my_share",
-        schema: "public",
-        finch_name: MyApp.Finch
+        schema: "public"
 
   2. Per-query options passed to `DeltaQuery.Query.execute/2`
 
@@ -24,7 +23,7 @@ defmodule DeltaQuery.Config do
   ## Optional Keys
 
   - `:schema` - Schema name (default: "public")
-  - `:finch_name` - Finch pool name (default: `:delta_query_finch`)
+  - `:req_options` - Options passed to Req requests (default: `[]`)
   """
 
   @type t :: %__MODULE__{
@@ -32,11 +31,11 @@ defmodule DeltaQuery.Config do
           bearer_token: String.t(),
           share: String.t(),
           schema: String.t(),
-          finch_name: atom()
+          req_options: keyword()
         }
 
   @enforce_keys [:endpoint, :bearer_token, :share]
-  defstruct [:endpoint, :bearer_token, :share, schema: "public", finch_name: :delta_query_finch]
+  defstruct [:endpoint, :bearer_token, :share, schema: "public", req_options: []]
 
   @doc """
   Build a config struct from keyword options, falling back to application env.
@@ -50,7 +49,7 @@ defmodule DeltaQuery.Config do
     bearer_token = Keyword.get(merged, :bearer_token, "")
     share = Keyword.get(merged, :share, "")
     schema = Keyword.get(merged, :schema, "public")
-    finch_name = Keyword.get(merged, :finch_name, :delta_query_finch)
+    req_options = Keyword.get(merged, :req_options, [])
 
     cond do
       endpoint == "" or is_nil(endpoint) ->
@@ -69,7 +68,7 @@ defmodule DeltaQuery.Config do
            bearer_token: bearer_token,
            share: share,
            schema: schema,
-           finch_name: finch_name
+           req_options: req_options
          }}
     end
   end

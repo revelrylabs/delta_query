@@ -23,23 +23,14 @@ end
 
 ## Setup
 
-1. Ensure you have a Finch pool running. If you already have one in your app, you can reuse it. Otherwise, add one to your supervision tree:
-
-```elixir
-children = [
-  {Finch, name: :delta_query_finch}
-]
-```
-
-2. Configure credentials in `config/config.exs` or `config/runtime.exs`:
+Configure credentials in `config/config.exs` or `config/runtime.exs`:
 
 ```elixir
 config :delta_query, :config,
   endpoint: System.get_env("DELTA_SHARING_ENDPOINT"),
   bearer_token: System.get_env("DELTA_SHARING_BEARER_TOKEN"),
   share: "my_share",
-  schema: "public",
-  finch_name: :delta_query_finch  # or your existing Finch pool name
+  schema: "public"
 ```
 
 ## Usage
@@ -109,7 +100,7 @@ DeltaQuery.aggregate_by_column(results, :status)
 | `:bearer_token` | Yes | - | Authentication token |
 | `:share` | Yes | - | Share name to query |
 | `:schema` | No | `"public"` | Schema name |
-| `:finch_name` | No | `:delta_query_finch` | Finch pool name |
+| `:req_options` | No | `[]` | Options passed to Req requests |
 
 ## Predicates
 
