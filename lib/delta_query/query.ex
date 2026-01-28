@@ -131,7 +131,7 @@ defmodule DeltaQuery.Query do
     with {:ok, config} <- get_config(opts),
          client = Client.from_config(config),
          {:ok, %{files: files}} when is_list(files) <- query_table(client, config, query) do
-      process_files(files, query, config)
+      process_files(client, files, query)
     else
       {:ok, _empty_response} ->
         {:ok, empty_results(query.columns)}
@@ -162,18 +162,17 @@ defmodule DeltaQuery.Query do
     end
   end
 
-  defp process_files([], query, _config) do
+  defp process_files(_client, [], query) do
     {:ok, empty_results(query.columns)}
   end
 
-  defp process_files(files, query, config) do
+  defp process_files(client, files, query) do
     total_files = length(files)
 
     {:ok, df} =
-      Client.parse_parquet_files(files,
+      Client.parse_parquet_files(client, files,
         predicates: query.filters,
-        columns: query.columns,
-        finch_name: config.finch_name
+        columns: query.columns
       )
 
     {:ok, %Results{dataframe: df, files_processed: total_files, total_files: total_files}}

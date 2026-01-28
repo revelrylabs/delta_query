@@ -16,7 +16,7 @@ defmodule DeltaQuery.ConfigTest do
       assert config.bearer_token == "token123"
       assert config.share == "my_share"
       assert config.schema == "public"
-      assert config.finch_name == :delta_query_finch
+      assert config.req_options == []
     end
 
     test "allows custom schema" do
@@ -31,16 +31,16 @@ defmodule DeltaQuery.ConfigTest do
       assert config.schema == "custom"
     end
 
-    test "allows custom finch_name" do
+    test "allows custom req_options" do
       {:ok, config} =
         Config.new(
           endpoint: "https://example.com",
           bearer_token: "token123",
           share: "my_share",
-          finch_name: MyApp.Finch
+          req_options: [retry: false]
         )
 
-      assert config.finch_name == MyApp.Finch
+      assert config.req_options == [retry: false]
     end
 
     test "returns error when endpoint is missing" do

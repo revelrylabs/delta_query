@@ -9,13 +9,7 @@ defmodule DeltaQuery do
 
   ## Quick Start
 
-  1. Configure your Finch pool in your application supervision tree:
-
-      children = [
-        {Finch, name: :delta_query_finch}
-      ]
-
-  2. Configure credentials (config.exs or runtime):
+  1. Configure credentials (config.exs or runtime):
 
       config :delta_query, :config,
         endpoint: "https://sharing.example.com",
@@ -23,7 +17,7 @@ defmodule DeltaQuery do
         share: "my_share",
         schema: "public"
 
-  3. Query data:
+  2. Query data:
 
       "books"
       |> DeltaQuery.query()
@@ -246,7 +240,7 @@ defmodule DeltaQuery do
   - `:bearer_token` - Authentication token (required)
   - `:share` - Share name (required)
   - `:schema` - Schema name (default: "public")
-  - `:finch_name` - Finch pool name (default: `:delta_query_finch`)
+  - `:req_options` - Options passed to Req requests (default: `[]`)
 
   ## Examples
 

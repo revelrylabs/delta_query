@@ -30,26 +30,30 @@ defmodule DeltaQuery.Client do
 
   require Logger
 
-  defstruct [:endpoint, :bearer_token, :finch_name]
+  defstruct [:req, :download_req]
 
-  @type t :: %__MODULE__{
-          endpoint: String.t(),
-          bearer_token: String.t(),
-          finch_name: atom()
-        }
+  @type t :: %__MODULE__{req: Req.Request.t(), download_req: Req.Request.t()}
 
   @doc """
   Create a new client from endpoint and bearer token.
+
+  ## Options
+
+  Any additional options are passed to `Req.new/1` (e.g., `:retry`, `:connect_options`).
   """
   @spec new(String.t(), String.t(), keyword()) :: t()
   def new(endpoint, bearer_token, opts \\ []) do
-    finch_name = Keyword.get(opts, :finch_name, :delta_query_finch)
+    req =
+      opts
+      |> Keyword.merge(
+        base_url: endpoint,
+        headers: [{"authorization", "Bearer #{bearer_token}"}]
+      )
+      |> Req.new()
 
-    %__MODULE__{
-      endpoint: endpoint,
-      bearer_token: bearer_token,
-      finch_name: finch_name
-    }
+    download_req = Req.new(opts)
+
+    %__MODULE__{req: req, download_req: download_req}
   end
 
   @doc """
@@ -57,7 +61,7 @@ defmodule DeltaQuery.Client do
   """
   @spec from_config(Config.t()) :: t()
   def from_config(%Config{} = config) do
-    new(config.endpoint, config.bearer_token, finch_name: config.finch_name)
+    new(config.endpoint, config.bearer_token, config.req_options)
   end
 
   @doc """
@@ -93,31 +97,29 @@ defmodule DeltaQuery.Client do
 
   - `:predicates` - List of SQL-like filter strings (e.g., ["genre = 'Fiction'", "book_id = 123"])
   - `:columns` - List of column names to return (nil = all columns)
-  - `:finch_name` - Finch pool name for downloading files (default: `:delta_query_finch`)
   """
-  @spec parse_parquet_files(list(map()), keyword()) ::
+  @spec parse_parquet_files(t(), list(map()), keyword()) ::
           {:ok, Explorer.DataFrame.t()} | {:error, term()}
-  def parse_parquet_files(files, opts \\ []) do
+  def parse_parquet_files(%__MODULE__{} = client, files, opts \\ []) do
     predicates = Keyword.get(opts, :predicates, [])
     columns = Keyword.get(opts, :columns)
-    finch_name = Keyword.get(opts, :finch_name, :delta_query_finch)
 
     parsed_predicates = parse_predicates(predicates)
     relevant_files = filter_files_by_partitions(files, parsed_predicates)
 
-    df = process_files_to_dataframe(relevant_files, parsed_predicates, columns, finch_name)
+    df = process_files_to_dataframe(client, relevant_files, parsed_predicates, columns)
 
     {:ok, df}
   end
 
-  defp process_files_to_dataframe(files, parsed_predicates, columns, finch_name) do
+  defp process_files_to_dataframe(client, files, parsed_predicates, columns) do
     total_files = length(files)
 
     dataframes =
       files
       |> Enum.with_index(1)
       |> Enum.reduce([], fn {file, index}, dfs_acc ->
-        case download_and_parse_parquet_df(file, parsed_predicates, columns, finch_name) do
+        case download_and_parse_parquet_df(client, file, parsed_predicates, columns) do
           {:ok, df} ->
             if Explorer.DataFrame.n_rows(df) > 0 do
               [df | dfs_acc]
@@ -166,23 +168,13 @@ defmodule DeltaQuery.Client do
   end
 
   defp post_request(client, path, body) do
-    url = client.endpoint <> path
-
-    headers = [
-      {"authorization", "Bearer #{client.bearer_token}"},
-      {"content-type", "application/json"}
-    ]
-
-    json_body = Jason.encode!(body)
-
-    case :post
-         |> Finch.build(url, headers, json_body)
-         |> Finch.request(client.finch_name) do
-      {:ok, %Finch.Response{status: 200, body: response_body}} ->
+    # Delta Sharing returns newline-delimited JSON, so we disable auto-decode
+    case Req.post(client.req, url: path, json: body, decode_body: false) do
+      {:ok, %Req.Response{status: 200, body: response_body}} ->
         parse_query_response(response_body)
 
-      {:ok, %Finch.Response{status: status, body: response_body}} ->
-        Logger.error("delta sharing api error: status=#{status} body=#{response_body}")
+      {:ok, %Req.Response{status: status, body: response_body}} ->
+        Logger.error("delta sharing api error: status=#{status} body=#{inspect(response_body)}")
         {:error, {:api_error, status, response_body}}
 
       {:error, reason} ->
@@ -228,13 +220,14 @@ defmodule DeltaQuery.Client do
   defp maybe_add_predicates(body, []), do: body
   defp maybe_add_predicates(body, predicates), do: Map.put(body, "predicateHints", predicates)
 
-  defp download_and_parse_parquet_df(%{"url" => url} = _file, parsed_predicates, columns, finch_name) do
-    case :get |> Finch.build(url) |> Finch.request(finch_name) do
-      {:ok, %Finch.Response{status: 200, body: parquet_data}} ->
+  defp download_and_parse_parquet_df(client, %{"url" => url} = _file, parsed_predicates, columns) do
+    case Req.get(client.download_req, url: url, decode_body: false) do
+      {:ok, %Req.Response{status: 200, body: parquet_data}} ->
         parse_parquet_to_df(parquet_data, parsed_predicates, columns)
 
-      {:ok, %Finch.Response{status: status, body: body}} ->
-        Logger.error("failed to download parquet file: status=#{status} preview=#{String.slice(body, 0..100)}")
+      {:ok, %Req.Response{status: status, body: body}} ->
+        body_preview = if is_binary(body), do: String.slice(body, 0..100), else: inspect(body)
+        Logger.error("failed to download parquet file: status=#{status} preview=#{body_preview}")
 
         {:error, {:download_failed, status}}
 
