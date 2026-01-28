@@ -45,6 +45,7 @@ defmodule DeltaQuery.MixProject do
       {:explorer, "~> 0.10"},
       {:nimble_parsec, "~> 1.4"},
       {:req, "~> 0.5"},
+      {:jason, "~> 1.4"},
       {:styler, "~> 1.0", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.29", only: [:dev, :test], runtime: false},
       {:opentelemetry_api, "~> 1.3", optional: true}

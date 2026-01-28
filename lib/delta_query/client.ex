@@ -98,8 +98,7 @@ defmodule DeltaQuery.Client do
   - `:predicates` - List of SQL-like filter strings (e.g., ["genre = 'Fiction'", "book_id = 123"])
   - `:columns` - List of column names to return (nil = all columns)
   """
-  @spec parse_parquet_files(t(), list(map()), keyword()) ::
-          {:ok, Explorer.DataFrame.t()} | {:error, term()}
+  @spec parse_parquet_files(t(), list(map()), keyword()) :: {:ok, Explorer.DataFrame.t()}
   def parse_parquet_files(%__MODULE__{} = client, files, opts \\ []) do
     predicates = Keyword.get(opts, :predicates, [])
     columns = Keyword.get(opts, :columns)
