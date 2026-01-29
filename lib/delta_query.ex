@@ -40,9 +40,97 @@ defmodule DeltaQuery do
       |> DeltaQuery.execute!(config: config)
   """
 
+  alias DeltaQuery.Client
   alias DeltaQuery.Config
   alias DeltaQuery.Query
   alias DeltaQuery.Results
+
+  @doc """
+  List schemas in the configured share.
+
+  ## Options
+
+  - `:config` - A `DeltaQuery.Config` struct or keyword options
+
+  ## Examples
+
+      {:ok, schemas} = DeltaQuery.list_schemas()
+      # => {:ok, ["public", "analytics"]}
+
+      {:ok, schemas} = DeltaQuery.list_schemas(config: my_config)
+  """
+  @spec list_schemas(keyword()) :: {:ok, [String.t()]} | {:error, term()}
+  def list_schemas(opts \\ []) do
+    with {:ok, config} <- resolve_config(opts),
+         client = Client.from_config(config),
+         {:ok, items} <- Client.list_schemas(client, config.share) do
+      schema_names = Enum.map(items, & &1["name"])
+      {:ok, schema_names}
+    end
+  end
+
+  @doc """
+  List tables in a schema.
+
+  ## Options
+
+  - `:schema` - Schema name (defaults to configured schema)
+  - `:config` - A `DeltaQuery.Config` struct or keyword options
+
+  ## Examples
+
+      {:ok, tables} = DeltaQuery.list_tables()
+      # => {:ok, ["books", "loans", "members"]}
+
+      {:ok, tables} = DeltaQuery.list_tables(schema: "analytics")
+
+      {:ok, tables} = DeltaQuery.list_tables(config: my_config, schema: "analytics")
+  """
+  @spec list_tables(keyword()) :: {:ok, [String.t()]} | {:error, term()}
+  def list_tables(opts \\ []) do
+    with {:ok, config} <- resolve_config(opts),
+         schema = Keyword.get(opts, :schema, config.schema),
+         client = Client.from_config(config),
+         {:ok, items} <- Client.list_tables(client, config.share, schema) do
+      table_names = Enum.map(items, & &1["name"])
+      {:ok, table_names}
+    end
+  end
+
+  @doc """
+  Get column names and types for a table.
+
+  Returns a list of maps with `:name` and `:type` keys for each column.
+
+  ## Options
+
+  - `:table` - Table name (required)
+  - `:schema` - Schema name (defaults to configured schema)
+  - `:config` - A `DeltaQuery.Config` struct or keyword options
+
+  ## Examples
+
+      {:ok, columns} = DeltaQuery.table_schema(table: "books")
+      # => {:ok, [
+      #   %{name: "book_id", type: "long"},
+      #   %{name: "title", type: "string"},
+      #   %{name: "author", type: "string"}
+      # ]}
+
+      {:ok, columns} = DeltaQuery.table_schema(table: "books", schema: "analytics")
+  """
+  @spec table_schema(keyword()) :: {:ok, [map()]} | {:error, term()}
+  def table_schema(opts \\ []) do
+    table = Keyword.fetch!(opts, :table)
+
+    with {:ok, config} <- resolve_config(opts),
+         schema = Keyword.get(opts, :schema, config.schema),
+         client = Client.from_config(config),
+         {:ok, response} <- Client.table_metadata(client, config.share, schema, table) do
+      columns = extract_columns(response)
+      {:ok, columns}
+    end
+  end
 
   @doc """
   Create a new query for the given table.
@@ -266,4 +354,42 @@ defmodule DeltaQuery do
   """
   @spec configure!(keyword()) :: Config.t()
   defdelegate configure!(opts), to: Config, as: :new!
+
+  defp resolve_config(opts) do
+    case Keyword.get(opts, :config) do
+      %Config{} = config ->
+        {:ok, config}
+
+      nil ->
+        Config.new(opts)
+
+      config_opts when is_list(config_opts) ->
+        Config.new(config_opts)
+    end
+  end
+
+  @doc false
+  def extract_columns(%{metadata: %{"metaData" => %{"schemaString" => schema_string}}}) do
+    case Jason.decode(schema_string) do
+      {:ok, %{"fields" => fields}} ->
+        Enum.map(fields, fn field ->
+          %{
+            name: field["name"],
+            type: normalize_type(field["type"])
+          }
+        end)
+
+      _ ->
+        []
+    end
+  end
+
+  @doc false
+  def extract_columns(_), do: []
+
+  defp normalize_type(type) when is_binary(type), do: type
+  defp normalize_type(%{"type" => "struct"}), do: "struct"
+  defp normalize_type(%{"type" => "array"}), do: "array"
+  defp normalize_type(%{"type" => "map"}), do: "map"
+  defp normalize_type(_), do: "unknown"
 end

@@ -10,6 +10,59 @@ defmodule DeltaQueryTest do
     end
   end
 
+  describe "table_schema/1" do
+    test "requires table option" do
+      assert_raise KeyError, fn ->
+        DeltaQuery.table_schema()
+      end
+    end
+
+    test "returns error when config is missing" do
+      assert {:error, _} = DeltaQuery.table_schema(table: "books")
+    end
+
+    test "extracts columns from metadata response" do
+      metadata = %{
+        metadata: %{
+          "metaData" => %{
+            "schemaString" => ~s({"type":"struct","fields":[{"name":"id","type":"long"},{"name":"name","type":"string"}]})
+          }
+        }
+      }
+
+      columns = DeltaQuery.extract_columns(metadata)
+
+      assert columns == [
+               %{name: "id", type: "long"},
+               %{name: "name", type: "string"}
+             ]
+    end
+
+    test "extracts columns with complex types" do
+      metadata = %{
+        metadata: %{
+          "metaData" => %{
+            "schemaString" =>
+              ~s({"type":"struct","fields":[{"name":"id","type":"long"},{"name":"data","type":{"type":"struct"}},{"name":"tags","type":{"type":"array"}}]})
+          }
+        }
+      }
+
+      columns = DeltaQuery.extract_columns(metadata)
+
+      assert columns == [
+               %{name: "id", type: "long"},
+               %{name: "data", type: "struct"},
+               %{name: "tags", type: "array"}
+             ]
+    end
+
+    test "returns empty list for invalid metadata" do
+      assert DeltaQuery.extract_columns(%{}) == []
+      assert DeltaQuery.extract_columns(%{metadata: %{}}) == []
+    end
+  end
+
   describe "configure/1" do
     test "creates config from options" do
       {:ok, config} =

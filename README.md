@@ -35,6 +35,31 @@ config :delta_query, :config,
 
 ## Usage
 
+### Discovery
+
+List available schemas, tables, and columns before querying:
+
+```elixir
+# List schemas in the configured share
+{:ok, schemas} = DeltaQuery.list_schemas()
+# => {:ok, ["public", "analytics"]}
+
+# List tables in the configured schema
+{:ok, tables} = DeltaQuery.list_tables()
+# => {:ok, ["books", "loans", "members"]}
+
+# List tables in a specific schema
+{:ok, tables} = DeltaQuery.list_tables(schema: "analytics")
+
+# Get column names and types for a table
+{:ok, columns} = DeltaQuery.table_schema(table: "books")
+# => {:ok, [
+#   %{name: "book_id", type: "long"},
+#   %{name: "title", type: "string"},
+#   %{name: "author", type: "string"}
+# ]}
+```
+
 ### Basic Query
 
 ```elixir
