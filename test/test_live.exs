@@ -127,7 +127,7 @@ defmodule LiveTest do
       first_table = List.first(tables)
       IO.puts("Getting schema for table '#{first_table}'...")
 
-      case DeltaQuery.table_schema(table: first_table, config: config) do
+      case DeltaQuery.get_table_schema(table: first_table, config: config) do
         {:ok, columns} ->
           IO.puts("Found #{length(columns)} column(s):")
 

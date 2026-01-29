@@ -10,15 +10,15 @@ defmodule DeltaQueryTest do
     end
   end
 
-  describe "table_schema/1" do
+  describe "get_table_schema/1" do
     test "requires table option" do
       assert_raise KeyError, fn ->
-        DeltaQuery.table_schema()
+        DeltaQuery.get_table_schema()
       end
     end
 
     test "returns error when config is missing" do
-      assert {:error, _} = DeltaQuery.table_schema(table: "books")
+      assert {:error, _} = DeltaQuery.get_table_schema(table: "books")
     end
 
     test "extracts columns from metadata response" do

@@ -110,17 +110,17 @@ defmodule DeltaQuery do
 
   ## Examples
 
-      {:ok, columns} = DeltaQuery.table_schema(table: "books")
+      {:ok, columns} = DeltaQuery.get_table_schema(table: "books")
       # => {:ok, [
       #   %{name: "book_id", type: "long"},
       #   %{name: "title", type: "string"},
       #   %{name: "author", type: "string"}
       # ]}
 
-      {:ok, columns} = DeltaQuery.table_schema(table: "books", schema: "analytics")
+      {:ok, columns} = DeltaQuery.get_table_schema(table: "books", schema: "analytics")
   """
-  @spec table_schema(keyword()) :: {:ok, [map()]} | {:error, term()}
-  def table_schema(opts \\ []) do
+  @spec get_table_schema(keyword()) :: {:ok, [map()]} | {:error, term()}
+  def get_table_schema(opts \\ []) do
     table = Keyword.fetch!(opts, :table)
 
     with {:ok, config} <- resolve_config(opts),

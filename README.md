@@ -52,7 +52,7 @@ List available schemas, tables, and columns before querying:
 {:ok, tables} = DeltaQuery.list_tables(schema: "analytics")
 
 # Get column names and types for a table
-{:ok, columns} = DeltaQuery.table_schema(table: "books")
+{:ok, columns} = DeltaQuery.get_table_schema(table: "books")
 # => {:ok, [
 #   %{name: "book_id", type: "long"},
 #   %{name: "title", type: "string"},
