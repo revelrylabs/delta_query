@@ -41,6 +41,7 @@ defmodule DeltaQuery do
   """
 
   alias DeltaQuery.Client
+  alias DeltaQuery.Column
   alias DeltaQuery.Config
   alias DeltaQuery.Query
   alias DeltaQuery.Results
@@ -64,7 +65,7 @@ defmodule DeltaQuery do
     with {:ok, config} <- resolve_config(opts),
          client = Client.from_config(config),
          {:ok, items} <- Client.list_schemas(client, config.share) do
-      schema_names = Enum.map(items, & &1["name"])
+      schema_names = Enum.map(items, &Map.fetch!(&1, "name"))
       {:ok, schema_names}
     end
   end
@@ -92,7 +93,7 @@ defmodule DeltaQuery do
          schema = Keyword.get(opts, :schema, config.schema),
          client = Client.from_config(config),
          {:ok, items} <- Client.list_tables(client, config.share, schema) do
-      table_names = Enum.map(items, & &1["name"])
+      table_names = Enum.map(items, &Map.fetch!(&1, "name"))
       {:ok, table_names}
     end
   end
@@ -100,7 +101,7 @@ defmodule DeltaQuery do
   @doc """
   Get column names and types for a table.
 
-  Returns a list of maps with `:name` and `:type` keys for each column.
+  Returns a list of `DeltaQuery.Column` structs.
 
   ## Options
 
@@ -112,14 +113,14 @@ defmodule DeltaQuery do
 
       {:ok, columns} = DeltaQuery.get_table_schema(table: "books")
       # => {:ok, [
-      #   %{name: "book_id", type: "long"},
-      #   %{name: "title", type: "string"},
-      #   %{name: "author", type: "string"}
+      #   %DeltaQuery.Column{name: "book_id", type: "long"},
+      #   %DeltaQuery.Column{name: "title", type: "string"},
+      #   %DeltaQuery.Column{name: "author", type: "string"}
       # ]}
 
       {:ok, columns} = DeltaQuery.get_table_schema(table: "books", schema: "analytics")
   """
-  @spec get_table_schema(keyword()) :: {:ok, [map()]} | {:error, term()}
+  @spec get_table_schema(keyword()) :: {:ok, [Column.t()]} | {:error, term()}
   def get_table_schema(opts \\ []) do
     table = Keyword.fetch!(opts, :table)
 
@@ -127,8 +128,7 @@ defmodule DeltaQuery do
          schema = Keyword.get(opts, :schema, config.schema),
          client = Client.from_config(config),
          {:ok, response} <- Client.table_metadata(client, config.share, schema, table) do
-      columns = extract_columns(response)
-      {:ok, columns}
+      {:ok, extract_columns(response)}
     end
   end
 
@@ -360,11 +360,11 @@ defmodule DeltaQuery do
       %Config{} = config ->
         {:ok, config}
 
-      nil ->
-        Config.new(opts)
-
       config_opts when is_list(config_opts) ->
         Config.new(config_opts)
+
+      nil ->
+        Config.new(opts)
     end
   end
 
@@ -373,7 +373,7 @@ defmodule DeltaQuery do
     case Jason.decode(schema_string) do
       {:ok, %{"fields" => fields}} ->
         Enum.map(fields, fn field ->
-          %{
+          %Column{
             name: field["name"],
             type: normalize_type(field["type"])
           }
