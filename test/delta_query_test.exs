@@ -33,8 +33,8 @@ defmodule DeltaQueryTest do
       columns = DeltaQuery.extract_columns(metadata)
 
       assert columns == [
-               %{name: "id", type: "long"},
-               %{name: "name", type: "string"}
+               %DeltaQuery.Column{name: "id", type: "long"},
+               %DeltaQuery.Column{name: "name", type: "string"}
              ]
     end
 
@@ -51,9 +51,9 @@ defmodule DeltaQueryTest do
       columns = DeltaQuery.extract_columns(metadata)
 
       assert columns == [
-               %{name: "id", type: "long"},
-               %{name: "data", type: "struct"},
-               %{name: "tags", type: "array"}
+               %DeltaQuery.Column{name: "id", type: "long"},
+               %DeltaQuery.Column{name: "data", type: "struct"},
+               %DeltaQuery.Column{name: "tags", type: "array"}
              ]
     end
 
