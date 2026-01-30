@@ -22,14 +22,20 @@ defmodule LiveTest do
         schema: System.get_env("DELTA_SHARING_SCHEMA", "public")
       )
 
-    table = System.fetch_env!("DELTA_SHARING_TEST_TABLE")
-    columns = parse_columns(System.get_env("DELTA_SHARING_TEST_COLUMNS"))
-    filter = System.get_env("DELTA_SHARING_TEST_FILTER")
-
     IO.puts("Config:")
     IO.puts("  Endpoint: #{config.endpoint}")
     IO.puts("  Share: #{config.share}")
     IO.puts("  Schema: #{config.schema}")
+    IO.puts("")
+
+    # Test discovery
+    test_discovery(config)
+
+    table = System.fetch_env!("DELTA_SHARING_TEST_TABLE")
+    columns = parse_columns(System.get_env("DELTA_SHARING_TEST_COLUMNS"))
+    filter = System.get_env("DELTA_SHARING_TEST_FILTER")
+
+    IO.puts("Query Config:")
     IO.puts("  Table: #{table}")
     IO.puts("  Columns: #{inspect(columns)}")
     IO.puts("  Filter: #{filter || "(none)"}")
@@ -82,6 +88,62 @@ defmodule LiveTest do
         IO.puts("\n=== Test Failed ===")
         System.halt(1)
     end
+  end
+
+  defp test_discovery(config) do
+    IO.puts("=== Testing Discovery ===\n")
+
+    IO.puts("Listing schemas...")
+
+    case DeltaQuery.list_schemas(config: config) do
+      {:ok, schemas} ->
+        IO.puts("Found #{length(schemas)} schema(s):")
+        Enum.each(schemas, fn schema -> IO.puts("  - #{schema}") end)
+        IO.puts("")
+
+      {:error, reason} ->
+        IO.puts("Failed to list schemas: #{inspect(reason)}")
+        IO.puts("")
+    end
+
+    IO.puts("Listing tables in schema '#{config.schema}'...")
+
+    tables =
+      case DeltaQuery.list_tables(config: config) do
+        {:ok, tables} ->
+          IO.puts("Found #{length(tables)} table(s):")
+          Enum.each(tables, fn table -> IO.puts("  - #{table}") end)
+          IO.puts("")
+          tables
+
+        {:error, reason} ->
+          IO.puts("Failed to list tables: #{inspect(reason)}")
+          IO.puts("")
+          []
+      end
+
+    # Show schema for first table
+    if tables != [] do
+      first_table = List.first(tables)
+      IO.puts("Getting schema for table '#{first_table}'...")
+
+      case DeltaQuery.get_table_schema(table: first_table, config: config) do
+        {:ok, columns} ->
+          IO.puts("Found #{length(columns)} column(s):")
+
+          Enum.each(columns, fn col ->
+            IO.puts("  - #{col.name} (#{col.type})")
+          end)
+
+          IO.puts("")
+
+        {:error, reason} ->
+          IO.puts("Failed to get table schema: #{inspect(reason)}")
+          IO.puts("")
+      end
+    end
+
+    IO.puts("=== Discovery Complete ===\n")
   end
 
   defp parse_columns(nil), do: nil

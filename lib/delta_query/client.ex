@@ -65,6 +65,42 @@ defmodule DeltaQuery.Client do
   end
 
   @doc """
+  List schemas in a share.
+
+  Returns a list of schema metadata maps.
+  """
+  @spec list_schemas(t(), String.t()) :: {:ok, list(map())} | {:error, term()}
+  def list_schemas(%__MODULE__{} = client, share) do
+    get_request(client, "/shares/#{URI.encode(share)}/schemas")
+  end
+
+  @doc """
+  List tables in a schema.
+
+  Returns a list of table metadata maps.
+  """
+  @spec list_tables(t(), String.t(), String.t()) :: {:ok, list(map())} | {:error, term()}
+  def list_tables(%__MODULE__{} = client, share, schema) do
+    get_request(client, "/shares/#{URI.encode(share)}/schemas/#{URI.encode(schema)}/tables")
+  end
+
+  @doc """
+  Get table metadata including schema (column names and types).
+
+  Returns the protocol and metadata from the table, including the schema string.
+  """
+  @spec table_metadata(t(), String.t(), String.t(), String.t()) ::
+          {:ok, map()} | {:error, term()}
+  def table_metadata(%__MODULE__{} = client, share, schema, table) do
+    path =
+      "/shares/#{URI.encode(share)}/schemas/#{URI.encode(schema)}/tables/#{URI.encode(table)}/metadata"
+
+    with {:ok, body} <- get_raw(client, path) do
+      parse_metadata_response(body)
+    end
+  end
+
+  @doc """
   Query table data with optional predicates and limits.
 
   ## Options
@@ -166,33 +202,59 @@ defmodule DeltaQuery.Client do
     |> Explorer.DataFrame.concat_rows()
   end
 
+  defp get_request(client, path) do
+    case Req.get(client.req, url: path) do
+      {:ok, %Req.Response{status: 200, body: response_body}} ->
+        items = Map.get(response_body, "items", [])
+        {:ok, items}
+
+      response ->
+        handle_error_response(response)
+    end
+  end
+
+  defp get_raw(client, path) do
+    case Req.get(client.req, url: path, decode_body: false) do
+      {:ok, %Req.Response{status: 200, body: response_body}} ->
+        {:ok, response_body}
+
+      response ->
+        handle_error_response(response)
+    end
+  end
+
   defp post_request(client, path, body) do
-    # Delta Sharing returns newline-delimited JSON, so we disable auto-decode
     case Req.post(client.req, url: path, json: body, decode_body: false) do
       {:ok, %Req.Response{status: 200, body: response_body}} ->
         parse_query_response(response_body)
 
-      {:ok, %Req.Response{status: status, body: response_body}} ->
-        Logger.error("delta sharing api error: status=#{status} body=#{inspect(response_body)}")
-        {:error, {:api_error, status, response_body}}
+      response ->
+        handle_error_response(response)
+    end
+  end
 
-      {:error, reason} ->
-        Logger.error("delta sharing request failed: #{inspect(reason)}")
-        {:error, {:request_failed, reason}}
+  defp handle_error_response({:ok, %Req.Response{status: status, body: response_body}}) do
+    Logger.error("delta sharing api error: status=#{status} body=#{inspect(response_body)}")
+    {:error, {:api_error, status, response_body}}
+  end
+
+  defp handle_error_response({:error, reason}) do
+    Logger.error("delta sharing request failed: #{inspect(reason)}")
+    {:error, {:request_failed, reason}}
+  end
+
+  defp parse_metadata_response(body) do
+    case parse_ndjson(body) do
+      [{:ok, protocol}, {:ok, metadata}] ->
+        {:ok, %{protocol: protocol, metadata: metadata}}
+
+      _ ->
+        {:error, :invalid_response_format}
     end
   end
 
   defp parse_query_response(body) do
-    # Delta Sharing query response is newline-delimited JSON
-    # First line: protocol metadata
-    # Second line: metadata about the table
-    # Following lines: add/remove file actions
-    lines =
-      body
-      |> String.split("\n", trim: true)
-      |> Enum.map(&Jason.decode/1)
-
-    case lines do
+    case parse_ndjson(body) do
       [{:ok, protocol}, {:ok, metadata} | file_actions] ->
         files =
           file_actions
@@ -210,6 +272,12 @@ defmodule DeltaQuery.Client do
       _ ->
         {:error, :invalid_response_format}
     end
+  end
+
+  defp parse_ndjson(body) do
+    body
+    |> String.split("\n", trim: true)
+    |> Enum.map(&Jason.decode/1)
   end
 
   defp maybe_add_limit(body, nil), do: body
