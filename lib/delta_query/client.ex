@@ -408,14 +408,18 @@ defmodule DeltaQuery.Client do
 
   defp apply_filter(df, operation, column, value) when is_binary(column) do
     if column in Explorer.DataFrame.names(df) do
+      dtypes = Explorer.DataFrame.dtypes(df)
+      column_type = Map.get(dtypes, column)
+      normalized_value = DeltaQuery.PredicateParser.normalize_value(column_type, value)
+
       Explorer.DataFrame.filter_with(df, fn lf ->
         case operation do
-          :eq -> Explorer.Series.equal(lf[column], value)
-          :neq -> Explorer.Series.not_equal(lf[column], value)
-          :gt -> Explorer.Series.greater(lf[column], value)
-          :lt -> Explorer.Series.less(lf[column], value)
-          :gte -> Explorer.Series.greater_equal(lf[column], value)
-          :lte -> Explorer.Series.less_equal(lf[column], value)
+          :eq -> Explorer.Series.equal(lf[column], normalized_value)
+          :neq -> Explorer.Series.not_equal(lf[column], normalized_value)
+          :gt -> Explorer.Series.greater(lf[column], normalized_value)
+          :lt -> Explorer.Series.less(lf[column], normalized_value)
+          :gte -> Explorer.Series.greater_equal(lf[column], normalized_value)
+          :lte -> Explorer.Series.less_equal(lf[column], normalized_value)
         end
       end)
     else
