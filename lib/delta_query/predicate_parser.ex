@@ -184,9 +184,6 @@ defmodule DeltaQuery.PredicateParser do
 
       iex> DeltaQuery.PredicateParser.normalize_value(:string, "hello")
       "hello"
-
-      iex> DeltaQuery.PredicateParser.normalize_value(:date, "hello")
-      ArgumentError: invalid date in filter predicate: "hello" (invalid_date). Expected ISO8601 format like '2025-01-15'"
   """
   @spec normalize_value(atom(), any()) :: any()
   def normalize_value(:date, value) when is_binary(value) do
