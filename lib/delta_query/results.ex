@@ -224,28 +224,19 @@ defmodule DeltaQuery.Results do
   defp apply_df_filter(df, op, column, value) do
     dtypes = Explorer.DataFrame.dtypes(df)
     column_type = Map.get(dtypes, column)
-    value = normalize_filter_value(column_type, value)
+    normalized_value = DeltaQuery.PredicateParser.normalize_value(column_type, value)
 
     Explorer.DataFrame.filter_with(df, fn lf ->
       case op do
-        :eq -> Explorer.Series.equal(lf[column], value)
-        :neq -> Explorer.Series.not_equal(lf[column], value)
-        :gt -> Explorer.Series.greater(lf[column], value)
-        :lt -> Explorer.Series.less(lf[column], value)
-        :gte -> Explorer.Series.greater_equal(lf[column], value)
-        :lte -> Explorer.Series.less_equal(lf[column], value)
+        :eq -> Explorer.Series.equal(lf[column], normalized_value)
+        :neq -> Explorer.Series.not_equal(lf[column], normalized_value)
+        :gt -> Explorer.Series.greater(lf[column], normalized_value)
+        :lt -> Explorer.Series.less(lf[column], normalized_value)
+        :gte -> Explorer.Series.greater_equal(lf[column], normalized_value)
+        :lte -> Explorer.Series.less_equal(lf[column], normalized_value)
       end
     end)
   end
-
-  defp normalize_filter_value(:date, value) when is_binary(value) do
-    case Date.from_iso8601(value) do
-      {:ok, date} -> date
-      {:error, _} -> value
-    end
-  end
-
-  defp normalize_filter_value(_column_type, value), do: value
 
   defp apply_text_search(df, search_text, columns) do
     available_columns = Explorer.DataFrame.names(df)

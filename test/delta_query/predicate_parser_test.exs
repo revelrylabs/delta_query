@@ -95,4 +95,28 @@ defmodule DeltaQuery.PredicateParserTest do
       assert {:error, _} = PredicateParser.parse_predicate("column =")
     end
   end
+
+  describe "normalize_value/2" do
+    test "converts valid ISO8601 date string to Date" do
+      assert PredicateParser.normalize_value(:date, "2025-01-15") == ~D[2025-01-15]
+    end
+
+    test "raises ArgumentError for invalid date string" do
+      assert_raise ArgumentError, ~r/invalid date in filter predicate/, fn ->
+        PredicateParser.normalize_value(:date, "2025-13-45")
+      end
+    end
+
+    test "raises ArgumentError for malformed date string" do
+      assert_raise ArgumentError, ~r/invalid date in filter predicate.*Expected ISO8601/, fn ->
+        PredicateParser.normalize_value(:date, "not-a-date")
+      end
+    end
+
+    test "passes through non-date values unchanged" do
+      assert PredicateParser.normalize_value(:string, "hello") == "hello"
+      assert PredicateParser.normalize_value(:integer, 42) == 42
+      assert PredicateParser.normalize_value(:float, 3.14) == 3.14
+    end
+  end
 end

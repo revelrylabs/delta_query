@@ -120,6 +120,51 @@ defmodule DeltaQuery.ResultsTest do
       {:error, msg} = Results.filter(results, ["not a predicate"])
       assert msg =~ "invalid filter"
     end
+
+    test "filters date column with ISO8601 string predicate" do
+      results =
+        make_results(%{
+          "created_at" => [~D[2025-01-01], ~D[2025-02-15], ~D[2025-03-01]],
+          "id" => [1, 2, 3]
+        })
+
+      {:ok, filtered} = Results.filter(results, ["created_at >= '2025-02-01'"])
+      rows = Results.to_rows(filtered)
+
+      assert length(rows) == 2
+
+      assert Enum.all?(rows, fn row ->
+               Date.compare(row["created_at"], ~D[2025-02-01]) in [:gt, :eq]
+             end)
+    end
+
+    test "filters date column with less than comparison" do
+      results =
+        make_results(%{
+          "event_date" => [~D[2025-01-10], ~D[2025-01-20], ~D[2025-01-30]],
+          "id" => [1, 2, 3]
+        })
+
+      {:ok, filtered} = Results.filter(results, ["event_date < '2025-01-25'"])
+      rows = Results.to_rows(filtered)
+
+      assert length(rows) == 2
+      assert Enum.all?(rows, fn row -> Date.before?(row["event_date"], ~D[2025-01-25]) end)
+    end
+
+    test "filters date column with equality" do
+      results =
+        make_results(%{
+          "log_date" => [~D[2025-01-15], ~D[2025-01-15], ~D[2025-01-16]],
+          "id" => [1, 2, 3]
+        })
+
+      {:ok, filtered} = Results.filter(results, ["log_date = '2025-01-15'"])
+      rows = Results.to_rows(filtered)
+
+      assert length(rows) == 2
+      assert Enum.all?(rows, fn row -> Date.compare(row["log_date"], ~D[2025-01-15]) == :eq end)
+    end
   end
 
   describe "text_search/3" do
