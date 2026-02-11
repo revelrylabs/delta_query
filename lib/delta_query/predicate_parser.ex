@@ -174,8 +174,8 @@ defmodule DeltaQuery.PredicateParser do
   @doc """
   Normalize a filter value based on the column type.
 
-  Converts ISO8601 date strings to Date structs when the column type is `:date`.
-  Returns the value unchanged for other types.
+  date: Converts ISO8601 date strings to Date structs when the column type is `:date`, otherwise raises `ArgumentError` for invalid date strings.
+  other types: Returns the value unchanged.
 
   ## Examples
 
@@ -184,12 +184,19 @@ defmodule DeltaQuery.PredicateParser do
 
       iex> DeltaQuery.PredicateParser.normalize_value(:string, "hello")
       "hello"
+
+      iex> DeltaQuery.PredicateParser.normalize_value(:date, "hello")
+      ArgumentError: invalid date in filter predicate: "hello" (invalid_date). Expected ISO8601 format like '2025-01-15'"
   """
   @spec normalize_value(atom(), any()) :: any()
   def normalize_value(:date, value) when is_binary(value) do
     case Date.from_iso8601(value) do
-      {:ok, date} -> date
-      {:error, _} -> value
+      {:ok, date} ->
+        date
+
+      {:error, reason} ->
+        raise ArgumentError,
+              "invalid date in filter predicate: #{inspect(value)} (#{reason}). Expected ISO8601 format like '2025-01-15'"
     end
   end
 
