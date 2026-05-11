@@ -224,28 +224,24 @@ defmodule DeltaQuery.Results do
     end)
   end
 
-  defp apply_df_filter(df, op, column, value) do
-    dtypes = Explorer.DataFrame.dtypes(df)
-    column_type = Map.get(dtypes, column)
+  @ops %{
+    eq: %{fun: &Explorer.Series.equal/2, label: "=", requires: :any},
+    neq: %{fun: &Explorer.Series.not_equal/2, label: "!=", requires: :any},
+    gt: %{fun: &Explorer.Series.greater/2, label: ">", requires: :ordered},
+    lt: %{fun: &Explorer.Series.less/2, label: "<", requires: :ordered},
+    gte: %{fun: &Explorer.Series.greater_equal/2, label: ">=", requires: :ordered},
+    lte: %{fun: &Explorer.Series.less_equal/2, label: "<=", requires: :ordered}
+  }
 
-    if op in [:gt, :lt, :gte, :lte] and not orderable_dtype?(column_type) do
-      {:error, "operator #{op_string(op)} not supported on #{inspect(column_type)} column '#{column}'"}
+  defp apply_df_filter(df, op, column, value) do
+    %{fun: fun, label: label, requires: requires} = Map.fetch!(@ops, op)
+    column_type = df |> Explorer.DataFrame.dtypes() |> Map.get(column)
+
+    if requires == :ordered and not orderable_dtype?(column_type) do
+      {:error, "operator #{label} not supported on #{inspect(column_type)} column '#{column}'"}
     else
       normalized_value = DeltaQuery.PredicateParser.normalize_value(column_type, value)
-
-      filtered =
-        Explorer.DataFrame.filter_with(df, fn lf ->
-          case op do
-            :eq -> Explorer.Series.equal(lf[column], normalized_value)
-            :neq -> Explorer.Series.not_equal(lf[column], normalized_value)
-            :gt -> Explorer.Series.greater(lf[column], normalized_value)
-            :lt -> Explorer.Series.less(lf[column], normalized_value)
-            :gte -> Explorer.Series.greater_equal(lf[column], normalized_value)
-            :lte -> Explorer.Series.less_equal(lf[column], normalized_value)
-          end
-        end)
-
-      {:ok, filtered}
+      {:ok, Explorer.DataFrame.filter_with(df, fn lf -> fun.(lf[column], normalized_value) end)}
     end
   end
 
@@ -257,11 +253,6 @@ defmodule DeltaQuery.Results do
   defp orderable_dtype?(:date), do: true
   defp orderable_dtype?(:time), do: true
   defp orderable_dtype?(_), do: false
-
-  defp op_string(:gt), do: ">"
-  defp op_string(:lt), do: "<"
-  defp op_string(:gte), do: ">="
-  defp op_string(:lte), do: "<="
 
   defp apply_text_search(df, search_text, columns) do
     available_columns = Explorer.DataFrame.names(df)
