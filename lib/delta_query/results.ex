@@ -28,6 +28,15 @@ defmodule DeltaQuery.Results do
   @type join_opt :: {:on, String.t() | list(String.t())} | {:how, join_how()}
   @type join_opts :: list(join_opt())
 
+  @ops %{
+    eq: %{fun: &Explorer.Series.equal/2, label: "=", requires: :any},
+    neq: %{fun: &Explorer.Series.not_equal/2, label: "!=", requires: :any},
+    gt: %{fun: &Explorer.Series.greater/2, label: ">", requires: :ordered},
+    lt: %{fun: &Explorer.Series.less/2, label: "<", requires: :ordered},
+    gte: %{fun: &Explorer.Series.greater_equal/2, label: ">=", requires: :ordered},
+    lte: %{fun: &Explorer.Series.less_equal/2, label: "<=", requires: :ordered}
+  }
+
   @doc """
   Join two result sets on a common column.
 
@@ -223,15 +232,6 @@ defmodule DeltaQuery.Results do
       end
     end)
   end
-
-  @ops %{
-    eq: %{fun: &Explorer.Series.equal/2, label: "=", requires: :any},
-    neq: %{fun: &Explorer.Series.not_equal/2, label: "!=", requires: :any},
-    gt: %{fun: &Explorer.Series.greater/2, label: ">", requires: :ordered},
-    lt: %{fun: &Explorer.Series.less/2, label: "<", requires: :ordered},
-    gte: %{fun: &Explorer.Series.greater_equal/2, label: ">=", requires: :ordered},
-    lte: %{fun: &Explorer.Series.less_equal/2, label: "<=", requires: :ordered}
-  }
 
   defp apply_df_filter(df, op, column, value) do
     %{fun: fun, label: label, requires: requires} = Map.fetch!(@ops, op)
