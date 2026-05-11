@@ -210,7 +210,10 @@ defmodule DeltaQuery.Results do
       case DeltaQuery.PredicateParser.parse_predicate(predicate) do
         {:ok, {op, column, value}} ->
           if column in Explorer.DataFrame.names(acc) do
-            {:cont, {:ok, apply_df_filter(acc, op, column, value)}}
+            case apply_df_filter(acc, op, column, value) do
+              {:ok, filtered} -> {:cont, {:ok, filtered}}
+              {:error, _} = err -> {:halt, err}
+            end
           else
             {:halt, {:error, "unknown column in filter: #{column}"}}
           end
@@ -224,19 +227,41 @@ defmodule DeltaQuery.Results do
   defp apply_df_filter(df, op, column, value) do
     dtypes = Explorer.DataFrame.dtypes(df)
     column_type = Map.get(dtypes, column)
-    normalized_value = DeltaQuery.PredicateParser.normalize_value(column_type, value)
 
-    Explorer.DataFrame.filter_with(df, fn lf ->
-      case op do
-        :eq -> Explorer.Series.equal(lf[column], normalized_value)
-        :neq -> Explorer.Series.not_equal(lf[column], normalized_value)
-        :gt -> Explorer.Series.greater(lf[column], normalized_value)
-        :lt -> Explorer.Series.less(lf[column], normalized_value)
-        :gte -> Explorer.Series.greater_equal(lf[column], normalized_value)
-        :lte -> Explorer.Series.less_equal(lf[column], normalized_value)
-      end
-    end)
+    if op in [:gt, :lt, :gte, :lte] and not orderable_dtype?(column_type) do
+      {:error, "operator #{op_string(op)} not supported on #{inspect(column_type)} column '#{column}'"}
+    else
+      normalized_value = DeltaQuery.PredicateParser.normalize_value(column_type, value)
+
+      filtered =
+        Explorer.DataFrame.filter_with(df, fn lf ->
+          case op do
+            :eq -> Explorer.Series.equal(lf[column], normalized_value)
+            :neq -> Explorer.Series.not_equal(lf[column], normalized_value)
+            :gt -> Explorer.Series.greater(lf[column], normalized_value)
+            :lt -> Explorer.Series.less(lf[column], normalized_value)
+            :gte -> Explorer.Series.greater_equal(lf[column], normalized_value)
+            :lte -> Explorer.Series.less_equal(lf[column], normalized_value)
+          end
+        end)
+
+      {:ok, filtered}
+    end
   end
+
+  defp orderable_dtype?({:f, _}), do: true
+  defp orderable_dtype?({:s, _}), do: true
+  defp orderable_dtype?({:u, _}), do: true
+  defp orderable_dtype?({:naive_datetime, _}), do: true
+  defp orderable_dtype?({:duration, _}), do: true
+  defp orderable_dtype?(:date), do: true
+  defp orderable_dtype?(:time), do: true
+  defp orderable_dtype?(_), do: false
+
+  defp op_string(:gt), do: ">"
+  defp op_string(:lt), do: "<"
+  defp op_string(:gte), do: ">="
+  defp op_string(:lte), do: "<="
 
   defp apply_text_search(df, search_text, columns) do
     available_columns = Explorer.DataFrame.names(df)
