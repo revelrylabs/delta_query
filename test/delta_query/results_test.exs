@@ -121,6 +121,26 @@ defmodule DeltaQuery.ResultsTest do
       assert msg =~ "invalid filter"
     end
 
+    test "returns error when ordering operator is applied to a string column" do
+      results = make_results(%{"revision" => ["0", "1", "2"], "id" => [1, 2, 3]})
+
+      {:error, msg} = Results.filter(results, ["revision > 0"])
+
+      assert msg =~ "operator >"
+      assert msg =~ "revision"
+      assert msg =~ "string"
+    end
+
+    test "equality and inequality still work on string columns" do
+      results = make_results(%{"revision" => ["0", "1", "2"], "id" => [1, 2, 3]})
+
+      {:ok, filtered} = Results.filter(results, ["revision != '0'"])
+      rows = Results.to_rows(filtered)
+
+      assert length(rows) == 2
+      assert Enum.all?(rows, &(&1["revision"] != "0"))
+    end
+
     test "filters date column with ISO8601 string predicate" do
       results =
         make_results(%{

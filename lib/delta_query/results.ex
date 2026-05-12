@@ -28,6 +28,15 @@ defmodule DeltaQuery.Results do
   @type join_opt :: {:on, String.t() | list(String.t())} | {:how, join_how()}
   @type join_opts :: list(join_opt())
 
+  @ops %{
+    eq: %{fun: &Explorer.Series.equal/2, label: "=", requires: :any},
+    neq: %{fun: &Explorer.Series.not_equal/2, label: "!=", requires: :any},
+    gt: %{fun: &Explorer.Series.greater/2, label: ">", requires: :ordered},
+    lt: %{fun: &Explorer.Series.less/2, label: "<", requires: :ordered},
+    gte: %{fun: &Explorer.Series.greater_equal/2, label: ">=", requires: :ordered},
+    lte: %{fun: &Explorer.Series.less_equal/2, label: "<=", requires: :ordered}
+  }
+
   @doc """
   Join two result sets on a common column.
 
@@ -210,7 +219,10 @@ defmodule DeltaQuery.Results do
       case DeltaQuery.PredicateParser.parse_predicate(predicate) do
         {:ok, {op, column, value}} ->
           if column in Explorer.DataFrame.names(acc) do
-            {:cont, {:ok, apply_df_filter(acc, op, column, value)}}
+            case apply_df_filter(acc, op, column, value) do
+              {:ok, filtered} -> {:cont, {:ok, filtered}}
+              {:error, _} = err -> {:halt, err}
+            end
           else
             {:halt, {:error, "unknown column in filter: #{column}"}}
           end
@@ -222,21 +234,28 @@ defmodule DeltaQuery.Results do
   end
 
   defp apply_df_filter(df, op, column, value) do
-    dtypes = Explorer.DataFrame.dtypes(df)
-    column_type = Map.get(dtypes, column)
-    normalized_value = DeltaQuery.PredicateParser.normalize_value(column_type, value)
+    %{fun: fun, label: label, requires: requires} = Map.fetch!(@ops, op)
+    column_type = df |> Explorer.DataFrame.dtypes() |> Map.get(column)
 
-    Explorer.DataFrame.filter_with(df, fn lf ->
-      case op do
-        :eq -> Explorer.Series.equal(lf[column], normalized_value)
-        :neq -> Explorer.Series.not_equal(lf[column], normalized_value)
-        :gt -> Explorer.Series.greater(lf[column], normalized_value)
-        :lt -> Explorer.Series.less(lf[column], normalized_value)
-        :gte -> Explorer.Series.greater_equal(lf[column], normalized_value)
-        :lte -> Explorer.Series.less_equal(lf[column], normalized_value)
-      end
-    end)
+    if requires == :ordered and not orderable_dtype?(column_type) do
+      {:error, "operator #{label} not supported on #{inspect(column_type)} column '#{column}'"}
+    else
+      normalized_value = DeltaQuery.PredicateParser.normalize_value(column_type, value)
+      {:ok, Explorer.DataFrame.filter_with(df, fn lf -> fun.(lf[column], normalized_value) end)}
+    end
   end
+
+  # float
+  defp orderable_dtype?({:f, _}), do: true
+  # signed int
+  defp orderable_dtype?({:s, _}), do: true
+  # unsigned int,
+  defp orderable_dtype?({:u, _}), do: true
+  defp orderable_dtype?({:naive_datetime, _}), do: true
+  defp orderable_dtype?({:duration, _}), do: true
+  defp orderable_dtype?(:date), do: true
+  defp orderable_dtype?(:time), do: true
+  defp orderable_dtype?(_), do: false
 
   defp apply_text_search(df, search_text, columns) do
     available_columns = Explorer.DataFrame.names(df)
