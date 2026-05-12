@@ -245,6 +245,9 @@ defmodule DeltaQuery.Results do
     end
   end
 
+  # Explorer dtype atoms: {:f, _} float, {:s, _} signed int, {:u, _} unsigned int,
+  # plus :date, :time, {:naive_datetime, _}, {:duration, _}. See `Explorer.Series`
+  # for the canonical taxonomy.
   defp orderable_dtype?({:f, _}), do: true
   defp orderable_dtype?({:s, _}), do: true
   defp orderable_dtype?({:u, _}), do: true
