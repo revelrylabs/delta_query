@@ -27,6 +27,9 @@ defmodule DeltaQuery.Client do
   """
 
   alias DeltaQuery.Config
+  alias DeltaQuery.PredicateParser
+  alias Explorer.DataFrame
+  alias Explorer.Series
 
   require Logger
 
@@ -126,15 +129,22 @@ defmodule DeltaQuery.Client do
   @doc """
   Download and parse Parquet files from Delta Sharing query response.
 
-  Returns an Explorer DataFrame, enabling joins, grouping, and aggregations.
-  Use `Explorer.DataFrame.to_rows/1` to convert to a list of maps if needed.
+  Returns `{:ok, dataframe}` on success, where the dataframe is an `Explorer.DataFrame`
+  enabling joins, grouping, and aggregations. Use `Explorer.DataFrame.to_rows/1` to
+  convert it to a list of maps if needed.
+
+  Returns `{:error, message}` when a predicate cannot be applied, for example when an
+  ordering operator (`>`, `<`, `>=`, `<=`) targets a column whose type does not support
+  ordering. Processing stops at the first such error. Files that fail to download or
+  parse are logged and skipped rather than returned as errors.
 
   ## Options
 
   - `:predicates` - List of SQL-like filter strings (e.g., ["genre = 'Fiction'", "book_id = 123"])
   - `:columns` - List of column names to return (nil = all columns)
   """
-  @spec parse_parquet_files(t(), list(map()), keyword()) :: {:ok, Explorer.DataFrame.t()}
+  @spec parse_parquet_files(t(), list(map()), keyword()) ::
+          {:ok, DataFrame.t()} | {:error, String.t()}
   def parse_parquet_files(%__MODULE__{} = client, files, opts \\ []) do
     predicates = Keyword.get(opts, :predicates, [])
     columns = Keyword.get(opts, :columns)
@@ -142,64 +152,66 @@ defmodule DeltaQuery.Client do
     parsed_predicates = parse_predicates(predicates)
     relevant_files = filter_files_by_partitions(files, parsed_predicates)
 
-    df = process_files_to_dataframe(client, relevant_files, parsed_predicates, columns)
-
-    {:ok, df}
+    process_files_to_dataframe(client, relevant_files, parsed_predicates, columns)
   end
 
   defp process_files_to_dataframe(client, files, parsed_predicates, columns) do
     total_files = length(files)
 
-    dataframes =
+    result =
       files
       |> Enum.with_index(1)
-      |> Enum.reduce([], fn {file, index}, dfs_acc ->
+      |> Enum.reduce_while({:ok, []}, fn {file, index}, {:ok, dfs_acc} ->
         case download_and_parse_parquet_df(client, file, parsed_predicates, columns) do
           {:ok, df} ->
-            if Explorer.DataFrame.n_rows(df) > 0 do
-              [df | dfs_acc]
+            if DataFrame.n_rows(df) > 0 do
+              {:cont, {:ok, [df | dfs_acc]}}
             else
-              dfs_acc
+              {:cont, {:ok, dfs_acc}}
             end
+
+          {:error, {:invalid_predicate, message}} ->
+            {:halt, {:error, message}}
 
           {:error, reason} ->
             Logger.error("failed to parse file #{index}/#{total_files}: #{inspect(reason)}")
-            dfs_acc
+            {:cont, {:ok, dfs_acc}}
         end
       end)
-      |> Enum.reverse()
 
-    case dataframes do
-      [] ->
-        empty_dataframe(columns)
+    with {:ok, dataframes} <- result do
+      case Enum.reverse(dataframes) do
+        [] ->
+          {:ok, empty_dataframe(columns)}
 
-      [single] ->
-        single
+        [single] ->
+          {:ok, single}
 
-      multiple ->
-        concat_with_common_columns(multiple)
+        multiple ->
+          {:ok, concat_with_common_columns(multiple)}
+      end
     end
   end
 
-  defp empty_dataframe(nil), do: Explorer.DataFrame.new([])
+  defp empty_dataframe(nil), do: DataFrame.new([])
 
   defp empty_dataframe(columns) when is_list(columns) do
     columns
     |> Map.new(fn col -> {col, []} end)
-    |> Explorer.DataFrame.new()
+    |> DataFrame.new()
   end
 
   defp concat_with_common_columns(dataframes) do
     common_columns =
       dataframes
-      |> Enum.map(&Explorer.DataFrame.names/1)
+      |> Enum.map(&DataFrame.names/1)
       |> Enum.map(&MapSet.new/1)
       |> Enum.reduce(&MapSet.intersection/2)
       |> MapSet.to_list()
 
     dataframes
-    |> Enum.map(&Explorer.DataFrame.select(&1, common_columns))
-    |> Explorer.DataFrame.concat_rows()
+    |> Enum.map(&DataFrame.select(&1, common_columns))
+    |> DataFrame.concat_rows()
   end
 
   defp get_request(client, path) do
@@ -305,14 +317,11 @@ defmodule DeltaQuery.Client do
   end
 
   defp parse_parquet_to_df(parquet_binary, parsed_predicates, columns) do
-    case Explorer.DataFrame.load_parquet(parquet_binary) do
+    case DataFrame.load_parquet(parquet_binary) do
       {:ok, df} ->
-        df =
-          df
-          |> apply_predicates(parsed_predicates)
-          |> select_columns(columns)
-
-        {:ok, df}
+        with {:ok, filtered} <- apply_predicates(df, parsed_predicates) do
+          {:ok, select_columns(filtered, columns)}
+        end
 
       {:error, reason} ->
         Logger.error("failed to load parquet data: #{inspect(reason)}")
@@ -325,7 +334,7 @@ defmodule DeltaQuery.Client do
   end
 
   defp parse_predicate(predicate) when is_binary(predicate) do
-    case DeltaQuery.PredicateParser.parse_predicate(predicate) do
+    case PredicateParser.parse_predicate(predicate) do
       {:ok, parsed} ->
         parsed
 
@@ -378,21 +387,22 @@ defmodule DeltaQuery.Client do
 
   defp normalize_value(value), do: value
 
-  defp apply_predicates(df, []), do: df
-
   defp apply_predicates(df, predicates) when is_list(predicates) do
-    Enum.reduce(predicates, df, fn predicate, acc ->
-      apply_predicate_to_df(acc, predicate)
+    Enum.reduce_while(predicates, {:ok, df}, fn predicate, {:ok, acc} ->
+      case apply_predicate_to_df(acc, predicate) do
+        {:ok, filtered} -> {:cont, {:ok, filtered}}
+        {:error, message} -> {:halt, {:error, {:invalid_predicate, message}}}
+      end
     end)
   end
 
   defp apply_predicate_to_df(df, {op, column, value}), do: apply_filter(df, op, column, value)
-  defp apply_predicate_to_df(df, nil), do: df
+  defp apply_predicate_to_df(df, nil), do: {:ok, df}
 
   defp select_columns(df, nil), do: df
 
   defp select_columns(df, columns) when is_list(columns) do
-    available_columns = Explorer.DataFrame.names(df)
+    available_columns = DataFrame.names(df)
     valid_columns = Enum.filter(columns, &(&1 in available_columns))
 
     if Enum.empty?(valid_columns) do
@@ -402,28 +412,41 @@ defmodule DeltaQuery.Client do
 
       df
     else
-      Explorer.DataFrame.select(df, valid_columns)
+      DataFrame.select(df, valid_columns)
     end
   end
 
   defp apply_filter(df, operation, column, value) when is_binary(column) do
-    if column in Explorer.DataFrame.names(df) do
-      dtypes = Explorer.DataFrame.dtypes(df)
+    if column in DataFrame.names(df) do
+      dtypes = DataFrame.dtypes(df)
       column_type = Map.get(dtypes, column)
-      normalized_value = DeltaQuery.PredicateParser.normalize_value(column_type, value)
 
-      Explorer.DataFrame.filter_with(df, fn lf ->
-        case operation do
-          :eq -> Explorer.Series.equal(lf[column], normalized_value)
-          :neq -> Explorer.Series.not_equal(lf[column], normalized_value)
-          :gt -> Explorer.Series.greater(lf[column], normalized_value)
-          :lt -> Explorer.Series.less(lf[column], normalized_value)
-          :gte -> Explorer.Series.greater_equal(lf[column], normalized_value)
-          :lte -> Explorer.Series.less_equal(lf[column], normalized_value)
-        end
-      end)
+      if operation in [:gt, :lt, :gte, :lte] and not PredicateParser.orderable_dtype?(column_type) do
+        {:error, "operator #{operator_label(operation)} not supported on #{inspect(column_type)} column '#{column}'"}
+      else
+        normalized_value = PredicateParser.normalize_value(column_type, value)
+
+        filtered =
+          DataFrame.filter_with(df, fn lf ->
+            case operation do
+              :eq -> Series.equal(lf[column], normalized_value)
+              :neq -> Series.not_equal(lf[column], normalized_value)
+              :gt -> Series.greater(lf[column], normalized_value)
+              :lt -> Series.less(lf[column], normalized_value)
+              :gte -> Series.greater_equal(lf[column], normalized_value)
+              :lte -> Series.less_equal(lf[column], normalized_value)
+            end
+          end)
+
+        {:ok, filtered}
+      end
     else
-      df
+      {:ok, df}
     end
   end
+
+  defp operator_label(:gt), do: ">"
+  defp operator_label(:lt), do: "<"
+  defp operator_label(:gte), do: ">="
+  defp operator_label(:lte), do: "<="
 end

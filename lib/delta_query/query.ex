@@ -17,9 +17,7 @@ defmodule DeltaQuery.Query do
   alias DeltaQuery.Client
   alias DeltaQuery.Config
   alias DeltaQuery.Results
-
-  require Explorer.DataFrame
-  require Logger
+  alias Explorer.DataFrame
 
   @enforce_keys [:table]
   defstruct [:table, columns: nil, filters: [], limit: nil]
@@ -169,25 +167,25 @@ defmodule DeltaQuery.Query do
   defp process_files(client, files, query) do
     total_files = length(files)
 
-    {:ok, df} =
-      Client.parse_parquet_files(client, files,
-        predicates: query.filters,
-        columns: query.columns
-      )
-
-    {:ok, %Results{dataframe: df, files_processed: total_files, total_files: total_files}}
+    with {:ok, df} <-
+           Client.parse_parquet_files(client, files,
+             predicates: query.filters,
+             columns: query.columns
+           ) do
+      {:ok, %Results{dataframe: df, files_processed: total_files, total_files: total_files}}
+    end
   end
 
   defp empty_results(columns) do
     %Results{dataframe: empty_dataframe(columns), files_processed: 0, total_files: 0}
   end
 
-  defp empty_dataframe(nil), do: Explorer.DataFrame.new([])
+  defp empty_dataframe(nil), do: DataFrame.new([])
 
   defp empty_dataframe(columns) when is_list(columns) do
     columns
     |> Map.new(fn col -> {col, []} end)
-    |> Explorer.DataFrame.new()
+    |> DataFrame.new()
   end
 
   defp get_config(opts) do

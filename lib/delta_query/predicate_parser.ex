@@ -198,4 +198,28 @@ defmodule DeltaQuery.PredicateParser do
   end
 
   def normalize_value(_column_type, value), do: value
+
+  @doc """
+  Whether an Explorer dtype supports the ordering operators `>`, `<`, `>=` and `<=`.
+
+  ## Examples
+
+      iex> DeltaQuery.PredicateParser.orderable_dtype?({:s, 64})
+      true
+
+      iex> DeltaQuery.PredicateParser.orderable_dtype?(:string)
+      false
+  """
+  @spec orderable_dtype?(term()) :: boolean()
+  # float
+  def orderable_dtype?({:f, _}), do: true
+  # signed int
+  def orderable_dtype?({:s, _}), do: true
+  # unsigned int
+  def orderable_dtype?({:u, _}), do: true
+  def orderable_dtype?({:naive_datetime, _}), do: true
+  def orderable_dtype?({:duration, _}), do: true
+  def orderable_dtype?(:date), do: true
+  def orderable_dtype?(:time), do: true
+  def orderable_dtype?(_), do: false
 end
