@@ -169,13 +169,13 @@ defmodule DeltaQuery.Query do
   defp process_files(client, files, query) do
     total_files = length(files)
 
-    {:ok, df} =
-      Client.parse_parquet_files(client, files,
-        predicates: query.filters,
-        columns: query.columns
-      )
-
-    {:ok, %Results{dataframe: df, files_processed: total_files, total_files: total_files}}
+    with {:ok, df} <-
+           Client.parse_parquet_files(client, files,
+             predicates: query.filters,
+             columns: query.columns
+           ) do
+      {:ok, %Results{dataframe: df, files_processed: total_files, total_files: total_files}}
+    end
   end
 
   defp empty_results(columns) do

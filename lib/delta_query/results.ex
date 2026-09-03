@@ -237,25 +237,13 @@ defmodule DeltaQuery.Results do
     %{fun: fun, label: label, requires: requires} = Map.fetch!(@ops, op)
     column_type = df |> Explorer.DataFrame.dtypes() |> Map.get(column)
 
-    if requires == :ordered and not orderable_dtype?(column_type) do
+    if requires == :ordered and not DeltaQuery.PredicateParser.orderable_dtype?(column_type) do
       {:error, "operator #{label} not supported on #{inspect(column_type)} column '#{column}'"}
     else
       normalized_value = DeltaQuery.PredicateParser.normalize_value(column_type, value)
       {:ok, Explorer.DataFrame.filter_with(df, fn lf -> fun.(lf[column], normalized_value) end)}
     end
   end
-
-  # float
-  defp orderable_dtype?({:f, _}), do: true
-  # signed int
-  defp orderable_dtype?({:s, _}), do: true
-  # unsigned int,
-  defp orderable_dtype?({:u, _}), do: true
-  defp orderable_dtype?({:naive_datetime, _}), do: true
-  defp orderable_dtype?({:duration, _}), do: true
-  defp orderable_dtype?(:date), do: true
-  defp orderable_dtype?(:time), do: true
-  defp orderable_dtype?(_), do: false
 
   defp apply_text_search(df, search_text, columns) do
     available_columns = Explorer.DataFrame.names(df)
