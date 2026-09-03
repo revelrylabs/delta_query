@@ -13,13 +13,15 @@ defmodule DeltaQuery.Results do
   This module handles stage 2.
   """
 
-  require Explorer.DataFrame
+  alias DeltaQuery.PredicateParser
+  alias Explorer.DataFrame
+  alias Explorer.Series
 
   @enforce_keys [:dataframe, :files_processed, :total_files]
   defstruct [:dataframe, :files_processed, :total_files]
 
   @type t :: %__MODULE__{
-          dataframe: Explorer.DataFrame.t(),
+          dataframe: DataFrame.t(),
           files_processed: non_neg_integer(),
           total_files: non_neg_integer()
         }
@@ -29,12 +31,12 @@ defmodule DeltaQuery.Results do
   @type join_opts :: list(join_opt())
 
   @ops %{
-    eq: %{fun: &Explorer.Series.equal/2, label: "=", requires: :any},
-    neq: %{fun: &Explorer.Series.not_equal/2, label: "!=", requires: :any},
-    gt: %{fun: &Explorer.Series.greater/2, label: ">", requires: :ordered},
-    lt: %{fun: &Explorer.Series.less/2, label: "<", requires: :ordered},
-    gte: %{fun: &Explorer.Series.greater_equal/2, label: ">=", requires: :ordered},
-    lte: %{fun: &Explorer.Series.less_equal/2, label: "<=", requires: :ordered}
+    eq: %{fun: &Series.equal/2, label: "=", requires: :any},
+    neq: %{fun: &Series.not_equal/2, label: "!=", requires: :any},
+    gt: %{fun: &Series.greater/2, label: ">", requires: :ordered},
+    lt: %{fun: &Series.less/2, label: "<", requires: :ordered},
+    gte: %{fun: &Series.greater_equal/2, label: ">=", requires: :ordered},
+    lte: %{fun: &Series.less_equal/2, label: "<=", requires: :ordered}
   }
 
   @doc """
@@ -62,7 +64,7 @@ defmodule DeltaQuery.Results do
     left_df = normalize_join_columns(left.dataframe, on_columns)
     right_df = normalize_join_columns(right.dataframe, on_columns)
 
-    joined_df = Explorer.DataFrame.join(left_df, right_df, on: on_columns, how: how)
+    joined_df = DataFrame.join(left_df, right_df, on: on_columns, how: how)
 
     %__MODULE__{
       dataframe: joined_df,
@@ -82,7 +84,7 @@ defmodule DeltaQuery.Results do
       |> Results.to_rows()
   """
   @spec to_rows(t()) :: list(map())
-  def to_rows(%__MODULE__{dataframe: df}), do: Explorer.DataFrame.to_rows(df)
+  def to_rows(%__MODULE__{dataframe: df}), do: DataFrame.to_rows(df)
 
   @doc """
   Return the number of rows in the results.
@@ -93,7 +95,7 @@ defmodule DeltaQuery.Results do
       # => 42
   """
   @spec count(t()) :: non_neg_integer()
-  def count(%__MODULE__{dataframe: df}), do: Explorer.DataFrame.n_rows(df)
+  def count(%__MODULE__{dataframe: df}), do: DataFrame.n_rows(df)
 
   @doc """
   Check if results are empty.
@@ -129,8 +131,8 @@ defmodule DeltaQuery.Results do
   """
   @spec sum(t(), String.t()) :: number()
   def sum(%__MODULE__{dataframe: df}, column) do
-    if column in Explorer.DataFrame.names(df) do
-      Explorer.Series.sum(df[column])
+    if column in DataFrame.names(df) do
+      Series.sum(df[column])
     else
       0
     end
@@ -216,9 +218,9 @@ defmodule DeltaQuery.Results do
 
   defp apply_filters(df, predicates) do
     Enum.reduce_while(predicates, {:ok, df}, fn predicate, {:ok, acc} ->
-      case DeltaQuery.PredicateParser.parse_predicate(predicate) do
+      case PredicateParser.parse_predicate(predicate) do
         {:ok, {op, column, value}} ->
-          if column in Explorer.DataFrame.names(acc) do
+          if column in DataFrame.names(acc) do
             case apply_df_filter(acc, op, column, value) do
               {:ok, filtered} -> {:cont, {:ok, filtered}}
               {:error, _} = err -> {:halt, err}
@@ -235,18 +237,18 @@ defmodule DeltaQuery.Results do
 
   defp apply_df_filter(df, op, column, value) do
     %{fun: fun, label: label, requires: requires} = Map.fetch!(@ops, op)
-    column_type = df |> Explorer.DataFrame.dtypes() |> Map.get(column)
+    column_type = df |> DataFrame.dtypes() |> Map.get(column)
 
-    if requires == :ordered and not DeltaQuery.PredicateParser.orderable_dtype?(column_type) do
+    if requires == :ordered and not PredicateParser.orderable_dtype?(column_type) do
       {:error, "operator #{label} not supported on #{inspect(column_type)} column '#{column}'"}
     else
-      normalized_value = DeltaQuery.PredicateParser.normalize_value(column_type, value)
-      {:ok, Explorer.DataFrame.filter_with(df, fn lf -> fun.(lf[column], normalized_value) end)}
+      normalized_value = PredicateParser.normalize_value(column_type, value)
+      {:ok, DataFrame.filter_with(df, fn lf -> fun.(lf[column], normalized_value) end)}
     end
   end
 
   defp apply_text_search(df, search_text, columns) do
-    available_columns = Explorer.DataFrame.names(df)
+    available_columns = DataFrame.names(df)
     valid_columns = Enum.filter(columns, &(&1 in available_columns))
 
     if Enum.empty?(valid_columns) do
@@ -255,16 +257,16 @@ defmodule DeltaQuery.Results do
       search_lower = String.downcase(search_text)
 
       filtered_df =
-        Explorer.DataFrame.filter_with(df, fn lf ->
+        DataFrame.filter_with(df, fn lf ->
           valid_columns
           |> Enum.map(fn col ->
             lf[col]
-            |> Explorer.Series.cast(:string)
-            |> Explorer.Series.downcase()
-            |> Explorer.Series.contains(search_lower)
+            |> Series.cast(:string)
+            |> Series.downcase()
+            |> Series.contains(search_lower)
           end)
           |> Enum.reduce(fn series, acc ->
-            Explorer.Series.or(acc, series)
+            Series.or(acc, series)
           end)
         end)
 
@@ -274,14 +276,14 @@ defmodule DeltaQuery.Results do
 
   defp normalize_join_columns(df, columns) do
     Enum.reduce(columns, df, fn col, acc_df ->
-      dtypes = Explorer.DataFrame.dtypes(acc_df)
+      dtypes = DataFrame.dtypes(acc_df)
       col_type = Map.get(dtypes, col)
 
       if col_type == :null do
         col_atom = String.to_existing_atom(col)
 
-        Explorer.DataFrame.mutate_with(acc_df, fn lf ->
-          [{col_atom, Explorer.Series.cast(lf[col], :integer)}]
+        DataFrame.mutate_with(acc_df, fn lf ->
+          [{col_atom, Series.cast(lf[col], :integer)}]
         end)
       else
         acc_df
