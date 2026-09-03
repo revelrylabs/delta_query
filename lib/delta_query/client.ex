@@ -129,8 +129,14 @@ defmodule DeltaQuery.Client do
   @doc """
   Download and parse Parquet files from Delta Sharing query response.
 
-  Returns an Explorer DataFrame, enabling joins, grouping, and aggregations.
-  Use `Explorer.DataFrame.to_rows/1` to convert to a list of maps if needed.
+  Returns `{:ok, dataframe}` on success, where the dataframe is an `Explorer.DataFrame`
+  enabling joins, grouping, and aggregations. Use `Explorer.DataFrame.to_rows/1` to
+  convert it to a list of maps if needed.
+
+  Returns `{:error, message}` when a predicate cannot be applied, for example when an
+  ordering operator (`>`, `<`, `>=`, `<=`) targets a column whose type does not support
+  ordering. Processing stops at the first such error. Files that fail to download or
+  parse are logged and skipped rather than returned as errors.
 
   ## Options
 
