@@ -2,7 +2,7 @@
 
 ## Development Setup
 
-1. Make sure you have Elixir 1.15+ installed
+1. Make sure you have Elixir 1.16+ installed
 1. Clone the repo
 1. Run `mix deps.get`
 1. Run `mix test`

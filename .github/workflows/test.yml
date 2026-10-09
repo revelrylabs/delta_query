@@ -10,14 +10,27 @@ permissions:
 
 jobs:
   build:
-    name: test
+    name: test (elixir ${{ matrix.elixir }}, otp ${{ matrix.otp }}${{ matrix.explorer && ', explorer minimum' || '' }})
     runs-on: ubuntu-22.04
     env:
       MIX_ENV: test
     strategy:
+      fail-fast: false
       matrix:
-        otp: ["25.2"]
-        elixir: ["1.15.6"]
+        include:
+          # Oldest supported
+          - elixir: "1.16"
+            otp: "26"
+          - elixir: "1.18"
+            otp: "27"
+          # Newest supported; formatting is only checked here
+          - elixir: "1.20"
+            otp: "28"
+            lint: true
+          # Lowest Explorer version allowed by mix.exs
+          - elixir: "1.20"
+            otp: "28"
+            explorer: minimum
     steps:
       - uses: actions/checkout@v3
       - uses: erlef/setup-beam@v1
@@ -28,11 +41,18 @@ jobs:
         uses: actions/cache@v3
         with:
           path: deps
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-
+          key: ${{ runner.os }}-mix-${{ matrix.elixir }}-${{ matrix.otp }}-${{ matrix.explorer }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-${{ matrix.elixir }}-${{ matrix.otp }}-${{ matrix.explorer }}-
+      - name: Pin Explorer to minimum supported version
+        if: matrix.explorer == 'minimum'
+        run: |
+          sed -i 's/{:explorer, "~> 0.10"}/{:explorer, "~> 0.10.0"}/' mix.exs
+          grep -q '{:explorer, "~> 0.10.0"}' mix.exs
+          mix deps.unlock --all
       - name: Install dependencies
         run: mix deps.get
       - name: Check formatting
+        if: matrix.lint
         run: mix format --check-formatted
       - name: Run tests
         run: mix test
