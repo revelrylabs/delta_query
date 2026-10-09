@@ -18,16 +18,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Oldest supported
           - elixir: "1.16"
             otp: "26"
           - elixir: "1.18"
             otp: "27"
-          # Newest supported; formatting is only checked here
           - elixir: "1.20"
             otp: "28"
             lint: true
-          # Lowest Explorer version allowed by mix.exs
           - elixir: "1.20"
             otp: "28"
             explorer: minimum
