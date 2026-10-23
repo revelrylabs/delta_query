@@ -29,7 +29,6 @@ defmodule DeltaQuery.Client do
   alias DeltaQuery.Config
   alias DeltaQuery.PredicateParser
   alias Explorer.DataFrame
-  alias Explorer.Series
 
   require Logger
 
@@ -418,30 +417,9 @@ defmodule DeltaQuery.Client do
 
   defp apply_filter(df, operation, column, value) when is_binary(column) do
     if column in DataFrame.names(df) do
-      dtypes = DataFrame.dtypes(df)
-      column_type = Map.get(dtypes, column)
-
-      if operation in [:gt, :lt, :gte, :lte] and not PredicateParser.orderable_dtype?(column_type) do
-        {:error, "operator #{operator_label(operation)} not supported on #{inspect(column_type)} column '#{column}'"}
-      else
-        normalized_value = PredicateParser.normalize_value(column_type, value)
-        filtered = DataFrame.filter_with(df, fn lf -> compare(operation, lf[column], normalized_value) end)
-        {:ok, filtered}
-      end
+      PredicateParser.filter_dataframe(df, operation, column, value)
     else
       {:ok, df}
     end
   end
-
-  defp compare(:eq, series, value), do: Series.equal(series, value)
-  defp compare(:neq, series, value), do: Series.not_equal(series, value)
-  defp compare(:gt, series, value), do: Series.greater(series, value)
-  defp compare(:lt, series, value), do: Series.less(series, value)
-  defp compare(:gte, series, value), do: Series.greater_equal(series, value)
-  defp compare(:lte, series, value), do: Series.less_equal(series, value)
-
-  defp operator_label(:gt), do: ">"
-  defp operator_label(:lt), do: "<"
-  defp operator_label(:gte), do: ">="
-  defp operator_label(:lte), do: "<="
 end

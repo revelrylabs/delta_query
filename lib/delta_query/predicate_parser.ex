@@ -16,6 +16,18 @@ defmodule DeltaQuery.PredicateParser do
 
   import NimbleParsec
 
+  alias Explorer.DataFrame
+  alias Explorer.Series
+
+  @ops %{
+    eq: %{fun: &Series.equal/2, label: "=", ordered: false},
+    neq: %{fun: &Series.not_equal/2, label: "!=", ordered: false},
+    gt: %{fun: &Series.greater/2, label: ">", ordered: true},
+    lt: %{fun: &Series.less/2, label: "<", ordered: true},
+    gte: %{fun: &Series.greater_equal/2, label: ">=", ordered: true},
+    lte: %{fun: &Series.less_equal/2, label: "<=", ordered: true}
+  }
+
   whitespace = ascii_string([?\s, ?\t], min: 0)
 
   column_name =
@@ -222,4 +234,24 @@ defmodule DeltaQuery.PredicateParser do
   def orderable_dtype?(:date), do: true
   def orderable_dtype?(:time), do: true
   def orderable_dtype?(_), do: false
+
+  @doc """
+  Filter a dataframe with a parsed predicate.
+
+  `column` must exist in `df`. Returns `{:error, message}` when an ordering operator
+  (`>`, `<`, `>=`, `<=`) targets a column type that does not support ordering.
+  """
+  @spec filter_dataframe(DataFrame.t(), atom(), String.t(), term()) ::
+          {:ok, DataFrame.t()} | {:error, String.t()}
+  def filter_dataframe(df, op, column, value) do
+    %{fun: fun, label: label, ordered: ordered} = Map.fetch!(@ops, op)
+    column_type = df |> DataFrame.dtypes() |> Map.get(column)
+
+    if ordered and not orderable_dtype?(column_type) do
+      {:error, "operator #{label} not supported on #{inspect(column_type)} column '#{column}'"}
+    else
+      normalized_value = normalize_value(column_type, value)
+      {:ok, DataFrame.filter_with(df, fn lf -> fun.(lf[column], normalized_value) end)}
+    end
+  end
 end
