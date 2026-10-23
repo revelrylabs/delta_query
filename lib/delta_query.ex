@@ -2,14 +2,17 @@ defmodule DeltaQuery do
   @moduledoc """
   Elixir client for querying Delta Sharing tables.
 
-  Delta Sharing is an open protocol for secure data sharing across organizations.
-  This library provides a high-level client for querying shared Delta tables. Results
-  are returned as Elixir data structures, with optional access to the underlying
-  Explorer DataFrames.
+  Delta Sharing is an open protocol for secure data sharing across organizations. A Delta
+  Sharing server answers a query with a list of Parquet files; this library downloads them,
+  loads them with Explorer, applies your predicates, and returns rows as Elixir maps. The
+  underlying `Explorer.DataFrame` is available on every `DeltaQuery.Results` struct.
+
+  This module is the public API. It delegates to `DeltaQuery.Query` (building and running
+  queries), `DeltaQuery.Results` (working with fetched data) and `DeltaQuery.Config`.
 
   ## Quick Start
 
-  1. Configure credentials (config.exs or runtime):
+  Configure credentials in `config/runtime.exs`:
 
       config :delta_query, :config,
         endpoint: "https://sharing.example.com",
@@ -17,23 +20,27 @@ defmodule DeltaQuery do
         share: "my_share",
         schema: "public"
 
-  2. Query data:
+  Then query:
 
       "books"
       |> DeltaQuery.query()
       |> DeltaQuery.where("library_id = 100")
+      |> DeltaQuery.select(["book_id", "title"])
       |> DeltaQuery.execute!()
       |> DeltaQuery.to_rows()
+      # => [%{"book_id" => 1001, "title" => "The Great Gatsby"}, ...]
 
-  ## Per-Query Configuration
+  ## Per-Call Configuration
 
-  You can also pass configuration per-query:
+  Any function that talks to the server accepts a `:config` option, either a
+  `DeltaQuery.Config` struct or a keyword list. Per-call keys override application config.
 
-      config = DeltaQuery.Config.new!(
-        endpoint: "https://...",
-        bearer_token: "...",
-        share: "my_share"
-      )
+      config =
+        DeltaQuery.configure!(
+          endpoint: "https://sharing.example.com",
+          bearer_token: "your-token",
+          share: "my_share"
+        )
 
       "books"
       |> DeltaQuery.query()
@@ -180,6 +187,10 @@ defmodule DeltaQuery do
 
   @doc """
   Execute the query and return results.
+
+  Server errors return `{:error, {:api_error, status, body}}` and transport errors return
+  `{:error, {:request_failed, reason}}`. A data file that fails to download or parse is
+  logged and skipped; the query still returns the rows from the files that did load.
 
   ## Options
 

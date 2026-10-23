@@ -1,4 +1,4 @@
-# Live test script - run with: mix run test_live.exs
+# Live check against a real Delta Sharing server. Run with: mix run scripts/live_check.exs
 #
 # Requires environment variables:
 #   DELTA_SHARING_ENDPOINT

@@ -29,13 +29,13 @@ jobs:
             otp: "28"
             explorer: minimum
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
         with:
           otp-version: ${{matrix.otp}}
           elixir-version: ${{matrix.elixir}}
       - name: Restore dependencies cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: deps
           key: ${{ runner.os }}-mix-${{ matrix.elixir }}-${{ matrix.otp }}-${{ matrix.explorer }}-${{ hashFiles('**/mix.lock') }}
@@ -48,9 +48,18 @@ jobs:
           mix deps.unlock --all
       - name: Install dependencies
         run: mix deps.get
+      - name: Fetch Explorer NIF
+        run: |
+          version=$(sed -n 's/.*"explorer": {:hex, :explorer, "\([0-9.]*\)".*/\1/p' mix.lock)
+          file="libexplorer-v${version}-nif-2.15-x86_64-unknown-linux-gnu.so.tar.gz"
+          dir="$HOME/.cache/rustler_precompiled/precompiled_nifs"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$dir/$file" "https://github.com/elixir-nx/explorer/releases/download/v${version}/${file}"
       - name: Check formatting
         if: matrix.lint
         run: mix format --check-formatted
+      - name: Run Credo
+        if: matrix.lint
+        run: mix credo --strict
       - name: Run tests
         run: mix test
-        
