@@ -103,6 +103,8 @@ DeltaQuery.count(results)     # => 42
 DeltaQuery.sum(results, "fine_amount")  # => 3.5 (integer and float columns)
 
 # Anything else Explorer can do
+require Explorer.DataFrame
+
 results.dataframe
 |> Explorer.DataFrame.sort_by(desc: page_count)
 |> Explorer.DataFrame.head(10)

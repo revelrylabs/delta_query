@@ -67,8 +67,9 @@ files, loads them with Explorer, applies your predicates, and returns rows as ma
 - `count/1`, `empty?/1`, `first/1` (`nil` when empty) and `sum/2` (`0` when the column is missing).
   `sum/2` supports integer and float columns only; decimal columns crash inside Explorer.
 - `filter/2` applies more predicates in memory. `text_search/3` is a case-insensitive substring match
-  OR-ed across the given columns; columns that do not exist are ignored, and an empty search string
-  returns everything. Prefer `where/2` on the query because it runs before download.
+  OR-ed across the given columns. Columns that do not exist are skipped, or `{:error, ...}` if none
+  of them exist. An empty search string returns everything. Prefer `where/2` on the query because
+  it runs before download.
 - `join/3` needs `on:` (string or list) and takes `how:` (`:left` default, `:inner`, `:right`,
   `:outer`, `:cross`). Non-key columns present on both sides get a `_right` suffix on the right.
 - `aggregate_by_column/2` takes the column as an **atom** and returns

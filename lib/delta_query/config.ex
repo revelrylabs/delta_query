@@ -4,7 +4,7 @@ defmodule DeltaQuery.Config do
 
   Configuration can be set via:
 
-  1. Application environment (config.exs):
+  1. Application environment (`config/runtime.exs`):
 
       config :delta_query, :config,
         endpoint: "https://...",
@@ -12,7 +12,9 @@ defmodule DeltaQuery.Config do
         share: "my_share",
         schema: "public"
 
-  2. Per-query options passed to `DeltaQuery.Query.execute/2`
+  2. A `:config` option, either a `%DeltaQuery.Config{}` or a keyword list, passed to any
+     function that talks to the server, such as `DeltaQuery.execute/2` or
+     `DeltaQuery.list_tables/1`. Per-call keys override application config.
 
   ## Required Keys
 
