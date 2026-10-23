@@ -12,19 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `usage-rules.md`, shipped in the Hex package, with rules for AI coding agents via
   [usage_rules](https://hex.pm/packages/usage_rules)
 - This changelog
-- Credo runs in CI
-- Text files check out with LF line endings on every platform
 
 ### Changed
 
 - README and module docs reworked
 - Hexdocs "View Source" links point at the release tag instead of `main`
-- `DeltaQuery.Results` and `DeltaQuery.Client` filter helpers were flattened
 
 ### Removed
 
 - The unused optional `opentelemetry_api` dependency
-- The `examples/` directory, which duplicated the test fixtures and their README
+- The `examples/` directory, which duplicated the test fixtures
 
 ## [0.3.0] - 2026-10-12
 
@@ -32,7 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CI tests across Elixir 1.16/1.18/1.20 on OTP 26/27/28, plus the minimum supported
   Explorer version ([#31](https://github.com/revelrylabs/delta_query/pull/31))
-- Explorer 0.13 ([#30](https://github.com/revelrylabs/delta_query/pull/30))
 
 ### Security
 
@@ -46,10 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DeltaQuery.Query.execute/2` returns `{:error, message}` instead of raising when an
   ordering operator (`>`, `<`, `>=`, `<=`) in a `where/2` predicate targets a column type
   that does not support ordering ([#27](https://github.com/revelrylabs/delta_query/pull/27))
-
-### Changed
-
-- Req 0.7, Explorer 0.12
 
 ## [0.2.3] - 2026-05-12
 
