@@ -55,8 +55,7 @@ defmodule DeltaQuery.MixProject do
       {:jason, "~> 1.4"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:styler, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:ex_doc, "~> 0.29", only: [:dev, :test], runtime: false},
-      {:opentelemetry_api, "~> 1.3", optional: true}
+      {:ex_doc, "~> 0.29", only: [:dev, :test], runtime: false}
     ]
   end
 

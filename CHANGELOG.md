@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hexdocs "View Source" links point at the release tag instead of `main`
 - `DeltaQuery.Results` and `DeltaQuery.Client` filter helpers were flattened
 
+### Removed
+
+- The unused optional `opentelemetry_api` dependency
+- The `examples/` directory, which duplicated the test fixtures and their README
+
 ## [0.3.0] - 2026-10-12
 
 ### Changed
