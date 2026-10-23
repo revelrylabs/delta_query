@@ -17,7 +17,7 @@ Add `delta_query` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:delta_query, "~> 0.3.0"}
+    {:delta_query, "~> 0.3.1"}
   ]
 end
 ```
