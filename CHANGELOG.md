@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-23
+
 ### Added
 
 - `usage-rules.md`, shipped in the Hex package, with rules for AI coding agents via
@@ -93,7 +95,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and limit hints; join, filter, text-search and aggregate results; access the underlying
   Explorer DataFrame
 
-[Unreleased]: https://github.com/revelrylabs/delta_query/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/revelrylabs/delta_query/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/revelrylabs/delta_query/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/revelrylabs/delta_query/compare/v0.2.4...v0.3.0
 [0.2.4]: https://github.com/revelrylabs/delta_query/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/revelrylabs/delta_query/compare/v0.2.2...v0.2.3
