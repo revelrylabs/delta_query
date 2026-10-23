@@ -33,15 +33,6 @@ defmodule DeltaQuery.Results do
   @type join_opt :: {:on, String.t() | list(String.t())} | {:how, join_how()}
   @type join_opts :: list(join_opt())
 
-  @ops %{
-    eq: %{fun: &Series.equal/2, label: "=", requires: :any},
-    neq: %{fun: &Series.not_equal/2, label: "!=", requires: :any},
-    gt: %{fun: &Series.greater/2, label: ">", requires: :ordered},
-    lt: %{fun: &Series.less/2, label: "<", requires: :ordered},
-    gte: %{fun: &Series.greater_equal/2, label: ">=", requires: :ordered},
-    lte: %{fun: &Series.less_equal/2, label: "<=", requires: :ordered}
-  }
-
   @doc """
   Join two result sets on a common column.
 
@@ -221,36 +212,24 @@ defmodule DeltaQuery.Results do
 
   defp apply_filters(df, predicates) do
     Enum.reduce_while(predicates, {:ok, df}, fn predicate, {:ok, acc} ->
-      case apply_predicate(acc, predicate) do
+      case parse_and_filter(acc, predicate) do
         {:ok, filtered} -> {:cont, {:ok, filtered}}
         {:error, _} = err -> {:halt, err}
       end
     end)
   end
 
-  defp apply_predicate(df, predicate) do
+  defp parse_and_filter(df, predicate) do
     case PredicateParser.parse_predicate(predicate) do
       {:ok, {op, column, value}} ->
         if column in DataFrame.names(df) do
-          apply_df_filter(df, op, column, value)
+          PredicateParser.filter_dataframe(df, op, column, value)
         else
           {:error, "unknown column in filter: #{column}"}
         end
 
       {:error, _reason} ->
         {:error, "invalid filter: #{predicate}"}
-    end
-  end
-
-  defp apply_df_filter(df, op, column, value) do
-    %{fun: fun, label: label, requires: requires} = Map.fetch!(@ops, op)
-    column_type = df |> DataFrame.dtypes() |> Map.get(column)
-
-    if requires == :ordered and not PredicateParser.orderable_dtype?(column_type) do
-      {:error, "operator #{label} not supported on #{inspect(column_type)} column '#{column}'"}
-    else
-      normalized_value = PredicateParser.normalize_value(column_type, value)
-      {:ok, DataFrame.filter_with(df, fn lf -> fun.(lf[column], normalized_value) end)}
     end
   end
 
