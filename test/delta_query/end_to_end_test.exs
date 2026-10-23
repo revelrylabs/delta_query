@@ -103,14 +103,17 @@ defmodule DeltaQuery.EndToEndTest do
       {:ok, results} = "books" |> DeltaQuery.query() |> DeltaQuery.where("library_id = 100") |> execute(config)
 
       assert DeltaQuery.count(results) == 3
+      assert %{files_processed: 1, total_files: 1} = results
       assert_received {:stub_request, :get, "/lib-100.parquet", nil, _}
       refute_received {:stub_request, :get, "/lib-200.parquet", nil, _}
     end
 
     for {predicate, column, matching, other} <- [
+          {"available = true", "available", "true", "false"},
           {"category = 'Fiction'", "category", "Fiction", "Mystery"},
           {"price > 9.5", "price", "10.0", "9.0"},
-          {"year >= 2024", "year", "2024", "2023"}
+          {"year >= 2024", "year", "2024", "2023"},
+          {"shard_id > 9007199254740992", "shard_id", "9007199254740993", "9007199254740992"}
         ] do
       test "prunes files on partition value with predicate #{predicate}" do
         config =
@@ -127,6 +130,35 @@ defmodule DeltaQuery.EndToEndTest do
         assert_received {:stub_request, :get, "/match.parquet", nil, _}
         refute_received {:stub_request, :get, "/other.parquet", nil, _}
       end
+    end
+
+    test "skips files that fail to download and reports the shortfall in the counts" do
+      config =
+        StubServer.config(%{
+          files: [
+            StubServer.fixture_file("books.parquet", "part-1.parquet"),
+            StubServer.fixture_file("books.parquet", "part-2.parquet")
+          ],
+          errors: %{"/part-2.parquet" => {403, "denied"}}
+        })
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> execute(config)
+
+      assert DeltaQuery.count(results) == 3
+      assert %{files_processed: 1, total_files: 2} = results
+    end
+
+    test "skips file actions that carry no url" do
+      action = %{
+        "file" => %{"id" => "x", "deltaSingleAction" => %{"add" => %{"path" => "https://files.test/books.parquet"}}}
+      }
+
+      config = StubServer.config(%{query_actions: [action]})
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> execute(config)
+
+      assert DeltaQuery.empty?(results)
+      assert %{files_processed: 0, total_files: 1} = results
     end
 
     test "returns an error for a query response that is not NDJSON" do

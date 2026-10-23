@@ -3,6 +3,7 @@ defmodule DeltaQuery.ClientTest do
 
   alias DeltaQuery.Client
   alias DeltaQuery.Config
+  alias DeltaQuery.Results
 
   defmodule ParquetAdapter do
     @moduledoc false
@@ -58,14 +59,14 @@ defmodule DeltaQuery.ClientTest do
   describe "parse_parquet_files/3" do
     test "returns empty dataframe when no files provided" do
       client = Client.new("https://example.com", "token")
-      {:ok, df} = Client.parse_parquet_files(client, [])
+      {:ok, %Results{dataframe: df, files_processed: 0, total_files: 0}} = Client.parse_parquet_files(client, [])
 
       assert Explorer.DataFrame.n_rows(df) == 0
     end
 
     test "returns empty dataframe with specified columns when no files" do
       client = Client.new("https://example.com", "token")
-      {:ok, df} = Client.parse_parquet_files(client, [], columns: ["id", "name"])
+      {:ok, %Results{dataframe: df}} = Client.parse_parquet_files(client, [], columns: ["id", "name"])
 
       assert Explorer.DataFrame.n_rows(df) == 0
       assert Explorer.DataFrame.names(df) == ["id", "name"]
@@ -80,7 +81,7 @@ defmodule DeltaQuery.ClientTest do
     end
 
     test "filters rows with an ordering operator on a numeric column", %{client: client, files: files} do
-      {:ok, df} = Client.parse_parquet_files(client, files, predicates: ["id >= 2"])
+      {:ok, %Results{dataframe: df}} = Client.parse_parquet_files(client, files, predicates: ["id >= 2"])
 
       assert Explorer.DataFrame.to_rows(df) == [
                %{"id" => 2, "revision" => "1"},

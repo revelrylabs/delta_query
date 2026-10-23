@@ -111,7 +111,9 @@ defmodule DeltaQuery.Query do
   - `:config` - A `DeltaQuery.Config` struct or keyword options for configuration.
     If not provided, configuration is read from application environment.
 
-  Returns `{:ok, %Results{}}` on success or `{:error, reason}` on failure.
+  Returns `{:ok, %Results{}}` on success or `{:error, reason}` on failure. In the results,
+  `total_files` counts the files left after partition pruning and `files_processed` how many of
+  those were downloaded and parsed. When they differ, some files failed and were skipped.
 
   ## Examples
 
@@ -165,20 +167,8 @@ defmodule DeltaQuery.Query do
     end
   end
 
-  defp process_files(_client, [], query) do
-    {:ok, empty_results(query.columns)}
-  end
-
   defp process_files(client, files, query) do
-    total_files = length(files)
-
-    with {:ok, df} <-
-           Client.parse_parquet_files(client, files,
-             predicates: query.filters,
-             columns: query.columns
-           ) do
-      {:ok, %Results{dataframe: df, files_processed: total_files, total_files: total_files}}
-    end
+    Client.parse_parquet_files(client, files, predicates: query.filters, columns: query.columns)
   end
 
   defp empty_results(columns) do

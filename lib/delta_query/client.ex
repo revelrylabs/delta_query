@@ -28,6 +28,7 @@ defmodule DeltaQuery.Client do
 
   alias DeltaQuery.Config
   alias DeltaQuery.PredicateParser
+  alias DeltaQuery.Results
   alias Explorer.DataFrame
   alias Explorer.Series
 
@@ -129,9 +130,9 @@ defmodule DeltaQuery.Client do
   @doc """
   Download and parse Parquet files from Delta Sharing query response.
 
-  Returns `{:ok, dataframe}` on success, where the dataframe is an `Explorer.DataFrame`
-  enabling joins, grouping, and aggregations. Use `Explorer.DataFrame.to_rows/1` to
-  convert it to a list of maps if needed.
+  Returns `{:ok, results}` on success. `results.dataframe` is an `Explorer.DataFrame` enabling
+  joins, grouping, and aggregations. `results.total_files` counts the files left after partition
+  pruning and `results.files_processed` how many of those were downloaded and parsed.
 
   Returns `{:error, message}` when a predicate cannot be applied, for example when an
   ordering operator (`>`, `<`, `>=`, `<=`) targets a column whose type does not support
@@ -144,7 +145,7 @@ defmodule DeltaQuery.Client do
   - `:columns` - List of column names to return (nil = all columns)
   """
   @spec parse_parquet_files(t(), list(map()), keyword()) ::
-          {:ok, DataFrame.t()} | {:error, String.t()}
+          {:ok, Results.t()} | {:error, String.t()}
   def parse_parquet_files(%__MODULE__{} = client, files, opts \\ []) do
     predicates = Keyword.get(opts, :predicates, [])
     columns = Keyword.get(opts, :columns)
@@ -152,46 +153,42 @@ defmodule DeltaQuery.Client do
     parsed_predicates = parse_predicates(predicates)
     relevant_files = filter_files_by_partitions(files, parsed_predicates)
 
-    process_files_to_dataframe(client, relevant_files, parsed_predicates, columns)
+    process_files_to_results(client, relevant_files, parsed_predicates, columns)
   end
 
-  defp process_files_to_dataframe(client, files, parsed_predicates, columns) do
+  defp process_files_to_results(client, files, parsed_predicates, columns) do
     total_files = length(files)
 
     result =
       files
       |> Enum.with_index(1)
-      |> Enum.reduce_while({:ok, []}, fn {file, index}, {:ok, dfs_acc} ->
+      |> Enum.reduce_while({:ok, [], 0}, fn {file, index}, {:ok, dfs_acc, processed} ->
         case download_and_parse_parquet_df(client, file, parsed_predicates, columns) do
           {:ok, df} ->
-            if DataFrame.n_rows(df) > 0 do
-              {:cont, {:ok, [df | dfs_acc]}}
-            else
-              {:cont, {:ok, dfs_acc}}
-            end
+            {:cont, {:ok, add_if_nonempty(dfs_acc, df), processed + 1}}
 
           {:error, {:invalid_predicate, message}} ->
             {:halt, {:error, message}}
 
           {:error, reason} ->
             Logger.error("failed to parse file #{index}/#{total_files}: #{inspect(reason)}")
-            {:cont, {:ok, dfs_acc}}
+            {:cont, {:ok, dfs_acc, processed}}
         end
       end)
 
-    with {:ok, dataframes} <- result do
-      case Enum.reverse(dataframes) do
-        [] ->
-          {:ok, empty_dataframe(columns)}
-
-        [single] ->
-          {:ok, single}
-
-        multiple ->
-          {:ok, concat_with_common_columns(multiple)}
-      end
+    with {:ok, dataframes, processed} <- result do
+      df = dataframes |> Enum.reverse() |> combine_dataframes(columns)
+      {:ok, %Results{dataframe: df, files_processed: processed, total_files: total_files}}
     end
   end
+
+  defp add_if_nonempty(dfs_acc, df) do
+    if DataFrame.n_rows(df) > 0, do: [df | dfs_acc], else: dfs_acc
+  end
+
+  defp combine_dataframes([], columns), do: empty_dataframe(columns)
+  defp combine_dataframes([single], _columns), do: single
+  defp combine_dataframes(multiple, _columns), do: concat_with_common_columns(multiple)
 
   defp empty_dataframe(nil), do: DataFrame.new([])
 
@@ -299,7 +296,11 @@ defmodule DeltaQuery.Client do
   defp maybe_add_predicates(body, []), do: body
   defp maybe_add_predicates(body, predicates), do: Map.put(body, "predicateHints", predicates)
 
-  defp download_and_parse_parquet_df(client, %{"url" => url} = _file, parsed_predicates, columns) do
+  defp download_and_parse_parquet_df(_client, file, _parsed_predicates, _columns) when not is_map_key(file, "url") do
+    {:error, {:missing_url, Map.keys(file)}}
+  end
+
+  defp download_and_parse_parquet_df(client, %{"url" => url}, parsed_predicates, columns) do
     case Req.get(client.download_req, url: url, decode_body: false) do
       {:ok, %Req.Response{status: 200, body: parquet_data}} ->
         parse_parquet_to_df(parquet_data, parsed_predicates, columns)
@@ -365,7 +366,7 @@ defmodule DeltaQuery.Client do
     Enum.all?(predicates, fn {op, column, value} ->
       case Map.get(partition_values, column) do
         nil -> true
-        partition_value -> matches_predicate?(op, normalize_value(partition_value), value)
+        partition_value -> matches_predicate?(op, coerce_partition_value(partition_value, value), value)
       end
     end)
   end
@@ -377,15 +378,23 @@ defmodule DeltaQuery.Client do
   defp matches_predicate?(:gte, partition_value, value), do: partition_value >= value
   defp matches_predicate?(:lte, partition_value, value), do: partition_value <= value
 
-  defp normalize_value(value) when is_binary(value) do
-    cond do
-      Regex.match?(~r/^-?\d+$/, value) -> String.to_integer(value)
-      Regex.match?(~r/^-?\d+\.\d+$/, value) -> String.to_float(value)
-      true -> value
+  defp coerce_partition_value(partition_value, value) when is_binary(partition_value) and is_number(value) do
+    with :error <- parse_exact(Integer, partition_value),
+         :error <- parse_exact(Float, partition_value) do
+      partition_value
     end
   end
 
-  defp normalize_value(value), do: value
+  defp coerce_partition_value("true", value) when is_boolean(value), do: true
+  defp coerce_partition_value("false", value) when is_boolean(value), do: false
+  defp coerce_partition_value(partition_value, _value), do: partition_value
+
+  defp parse_exact(module, string) do
+    case module.parse(string) do
+      {number, ""} -> number
+      _ -> :error
+    end
+  end
 
   defp apply_predicates(df, predicates) when is_list(predicates) do
     Enum.reduce_while(predicates, {:ok, df}, fn predicate, {:ok, acc} ->

@@ -60,7 +60,10 @@ files, loads them with Explorer, applies your predicates, and returns rows as ma
 
 ## Working with results
 
-- `%DeltaQuery.Results{dataframe: %Explorer.DataFrame{}, files_processed: n, total_files: n}`.
+- `%DeltaQuery.Results{dataframe: %Explorer.DataFrame{}, files_processed: n, total_files: m}`.
+  `total_files` is the file count after partition pruning and `files_processed` how many were
+  downloaded and parsed. `files_processed < total_files` means some files failed and the data is
+  incomplete.
   Use `dataframe` directly for anything Explorer can do.
 - `to_rows/1` returns maps with **string keys**. Values use Explorer types: `Date`,
   `NaiveDateTime`, `Decimal` for decimal columns, `nil` for null.
