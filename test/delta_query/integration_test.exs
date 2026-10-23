@@ -66,7 +66,7 @@ defmodule DeltaQuery.IntegrationTest do
 
       rows = DeltaQuery.to_rows(searched)
 
-      assert length(rows) >= 1
+      assert rows != []
       assert Enum.any?(rows, &String.contains?(&1["notes"], "large print"))
     end
 

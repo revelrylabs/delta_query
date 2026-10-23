@@ -4,12 +4,17 @@ defmodule DeltaQuery.Query do
 
   ## Example
 
+      alias DeltaQuery.{Query, Results}
+
       "books"
       |> Query.new()
       |> Query.where("library_id = 100")
       |> Query.select(["book_id", "title"])
       |> Query.execute!()
       |> Results.to_rows()
+
+  Predicates passed to `where/2` are sent to the server as partition hints and applied again
+  to every downloaded row.
 
   For post-query operations (joins, filtering, conversion to rows), see `DeltaQuery.Results`.
   """

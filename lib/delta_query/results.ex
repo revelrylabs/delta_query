@@ -2,15 +2,18 @@ defmodule DeltaQuery.Results do
   @moduledoc """
   In-memory operations on query results.
 
-  A `%Results{}` struct contains a dataframe returned from `Query.execute/1`.
-  All functions in this module operate on data that has already been fetched.
+  A `%DeltaQuery.Results{}` holds the `Explorer.DataFrame` returned by `DeltaQuery.Query.execute/2`,
+  plus `files_processed` and `total_files` counts. Every function in this module operates on data
+  that has already been fetched.
+
+  Rows from `to_rows/1` are maps with string keys. Values use Explorer's types: `Date`,
+  `NaiveDateTime`, `Decimal` for decimal columns, and `nil` for null.
 
   ## Filtering
 
-  Stage 1: Prefer `Query.where/2` for initial filtering** - it's more efficient.
-  Stage 2: Use `Results.filter/2` to apply additional filters on already-fetched data.
-
-  This module handles stage 2.
+  Prefer `DeltaQuery.Query.where/2` for initial filtering: it runs before download and can skip
+  whole files on partition columns. Use `filter/2` and `text_search/3` for further narrowing of
+  data you already have, such as joined results.
   """
 
   alias DeltaQuery.PredicateParser
@@ -218,21 +221,25 @@ defmodule DeltaQuery.Results do
 
   defp apply_filters(df, predicates) do
     Enum.reduce_while(predicates, {:ok, df}, fn predicate, {:ok, acc} ->
-      case PredicateParser.parse_predicate(predicate) do
-        {:ok, {op, column, value}} ->
-          if column in DataFrame.names(acc) do
-            case apply_df_filter(acc, op, column, value) do
-              {:ok, filtered} -> {:cont, {:ok, filtered}}
-              {:error, _} = err -> {:halt, err}
-            end
-          else
-            {:halt, {:error, "unknown column in filter: #{column}"}}
-          end
-
-        {:error, _reason} ->
-          {:halt, {:error, "invalid filter: #{predicate}"}}
+      case apply_predicate(acc, predicate) do
+        {:ok, filtered} -> {:cont, {:ok, filtered}}
+        {:error, _} = err -> {:halt, err}
       end
     end)
+  end
+
+  defp apply_predicate(df, predicate) do
+    case PredicateParser.parse_predicate(predicate) do
+      {:ok, {op, column, value}} ->
+        if column in DataFrame.names(df) do
+          apply_df_filter(df, op, column, value)
+        else
+          {:error, "unknown column in filter: #{column}"}
+        end
+
+      {:error, _reason} ->
+        {:error, "invalid filter: #{predicate}"}
+    end
   end
 
   defp apply_df_filter(df, op, column, value) do

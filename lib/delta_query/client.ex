@@ -425,25 +425,20 @@ defmodule DeltaQuery.Client do
         {:error, "operator #{operator_label(operation)} not supported on #{inspect(column_type)} column '#{column}'"}
       else
         normalized_value = PredicateParser.normalize_value(column_type, value)
-
-        filtered =
-          DataFrame.filter_with(df, fn lf ->
-            case operation do
-              :eq -> Series.equal(lf[column], normalized_value)
-              :neq -> Series.not_equal(lf[column], normalized_value)
-              :gt -> Series.greater(lf[column], normalized_value)
-              :lt -> Series.less(lf[column], normalized_value)
-              :gte -> Series.greater_equal(lf[column], normalized_value)
-              :lte -> Series.less_equal(lf[column], normalized_value)
-            end
-          end)
-
+        filtered = DataFrame.filter_with(df, fn lf -> compare(operation, lf[column], normalized_value) end)
         {:ok, filtered}
       end
     else
       {:ok, df}
     end
   end
+
+  defp compare(:eq, series, value), do: Series.equal(series, value)
+  defp compare(:neq, series, value), do: Series.not_equal(series, value)
+  defp compare(:gt, series, value), do: Series.greater(series, value)
+  defp compare(:lt, series, value), do: Series.less(series, value)
+  defp compare(:gte, series, value), do: Series.greater_equal(series, value)
+  defp compare(:lte, series, value), do: Series.less_equal(series, value)
 
   defp operator_label(:gt), do: ">"
   defp operator_label(:lt), do: "<"

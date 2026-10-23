@@ -2,11 +2,12 @@ defmodule DeltaQuery.MixProject do
   use Mix.Project
 
   @source_url "https://github.com/revelrylabs/delta_query"
+  @version "0.3.0"
 
   def project do
     [
       app: :delta_query,
-      version: "0.3.0",
+      version: @version,
       elixir: "~> 1.16",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -15,7 +16,8 @@ defmodule DeltaQuery.MixProject do
       homepage_url: @source_url,
 
       # Hex
-      description: "An Elixir library for querying Delta Sharing tables.",
+      description:
+        "Elixir client for querying Delta Sharing tables: SQL-like filters, column selection, joins and aggregations over Explorer DataFrames.",
       package: package(),
 
       # Docs
@@ -33,7 +35,12 @@ defmodule DeltaQuery.MixProject do
   defp package do
     [
       licenses: ["MIT"],
-      links: %{"GitHub" => @source_url},
+      links: %{
+        "GitHub" => @source_url,
+        "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md",
+        "Delta Sharing protocol" => "https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md"
+      },
+      files: ~w(lib mix.exs README.md LICENSE CHANGELOG.md usage-rules.md)
     ]
   end
 
@@ -46,23 +53,31 @@ defmodule DeltaQuery.MixProject do
       {:nimble_parsec, "~> 1.4"},
       {:req, "~> 0.5"},
       {:jason, "~> 1.4"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:styler, "~> 1.0", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.29", only: [:dev, :test], runtime: false},
       {:opentelemetry_api, "~> 1.3", optional: true}
     ]
   end
 
-  defp docs() do
+  defp docs do
     [
       main: "readme",
-      extras:
-        [
-          "CODE_OF_CONDUCT.md",
-          "RELEASES.md",
-          "CONTRIBUTING.md",
-          "README.md",
-          "LICENSE",
-        ]
+      source_ref: "v#{@version}",
+      extras: [
+        "README.md",
+        "CHANGELOG.md",
+        "CONTRIBUTING.md",
+        "CODE_OF_CONDUCT.md",
+        "RELEASES.md",
+        "LICENSE",
+        "usage-rules.md": [title: "Usage Rules"]
+      ],
+      groups_for_modules: [
+        "Query building": [DeltaQuery.Query, DeltaQuery.Config, DeltaQuery.Column],
+        Results: [DeltaQuery.Results],
+        Internals: [DeltaQuery.Client, DeltaQuery.PredicateParser]
+      ]
     ]
   end
 end

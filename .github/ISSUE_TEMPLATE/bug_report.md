@@ -21,9 +21,9 @@ Minimal code example that demonstrates the issue:
 A clear and concise description of what you expected to happen.
 
 **Environment:**
- - Elixir version: [e.g. 1.15.6]
- - OTP version: [e.g. 25.2]
- - DeltaQuery version: [e.g. 0.1.0]
+ - Elixir version: [e.g. 1.18.4]
+ - OTP version: [e.g. 27.3]
+ - DeltaQuery version: [e.g. 0.3.0]
 
 **Additional context**
 Add any other context about the problem here (error messages, stack traces, etc.).
