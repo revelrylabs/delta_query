@@ -7,21 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-23
+
 ### Added
 
 - `usage-rules.md`, shipped in the Hex package, with rules for AI coding agents via
   [usage_rules](https://hex.pm/packages/usage_rules)
-- This changelog
+  ([#36](https://github.com/revelrylabs/delta_query/pull/36))
+- This changelog ([#36](https://github.com/revelrylabs/delta_query/pull/36))
 
 ### Changed
 
 - README and module docs reworked
+  ([#36](https://github.com/revelrylabs/delta_query/pull/36))
 - Hexdocs "View Source" links point at the release tag instead of `main`
+  ([#36](https://github.com/revelrylabs/delta_query/pull/36))
 
 ### Removed
 
 - The unused optional `opentelemetry_api` dependency
+  ([#36](https://github.com/revelrylabs/delta_query/pull/36))
 - The `examples/` directory, which duplicated the test fixtures
+  ([#36](https://github.com/revelrylabs/delta_query/pull/36))
+
+### Security
+
+- Decimal 3.1.1 to 3.2.0 for a published advisory
+  ([#34](https://github.com/revelrylabs/delta_query/pull/34))
 
 ## [0.3.0] - 2026-10-12
 
@@ -82,7 +94,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and limit hints; join, filter, text-search and aggregate results; access the underlying
   Explorer DataFrame
 
-[Unreleased]: https://github.com/revelrylabs/delta_query/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/revelrylabs/delta_query/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/revelrylabs/delta_query/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/revelrylabs/delta_query/compare/v0.2.4...v0.3.0
 [0.2.4]: https://github.com/revelrylabs/delta_query/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/revelrylabs/delta_query/compare/v0.2.2...v0.2.3
