@@ -100,13 +100,13 @@ DeltaQuery.to_rows(results)
 ```elixir
 DeltaQuery.to_rows(results)   # => [%{"book_id" => 1001, ...}, ...]
 DeltaQuery.count(results)     # => 42
-DeltaQuery.sum(results, "fine_amount")  # => 3.5 (integer and float columns)
+DeltaQuery.sum(results, "fine_amount")  # => 0 (column is absent from these results)
 
 # Anything else Explorer can do
 require Explorer.DataFrame
 
 results.dataframe
-|> Explorer.DataFrame.sort_by(desc: page_count)
+|> Explorer.DataFrame.sort_by(desc: book_id)
 |> Explorer.DataFrame.head(10)
 ```
 
