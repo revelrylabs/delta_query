@@ -1,4 +1,4 @@
 [
   plugins: [Styler],
-  inputs: ["{config,lib,test}/**/*.{ex,exs}"]
+  inputs: ["{config,lib,test,scripts}/**/*.{ex,exs}"]
 ]

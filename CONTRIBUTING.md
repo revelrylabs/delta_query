@@ -23,7 +23,7 @@ network access. To exercise the client against a real Delta Sharing server, set
 `DELTA_SHARING_TEST_TABLE` and run:
 
 ```sh
-mix run test/test_live.exs
+mix run scripts/live_check.exs
 ```
 
 ## Submitting Changes
