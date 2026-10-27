@@ -22,7 +22,6 @@ defmodule DeltaQuery.Query do
   alias DeltaQuery.Client
   alias DeltaQuery.Config
   alias DeltaQuery.Results
-  alias Explorer.DataFrame
 
   @enforce_keys [:table]
   defstruct [:table, columns: nil, filters: [], limit: nil]
@@ -111,7 +110,8 @@ defmodule DeltaQuery.Query do
   - `:config` - A `DeltaQuery.Config` struct or keyword options for configuration.
     If not provided, configuration is read from application environment.
 
-  Returns `{:ok, %Results{}}` on success or `{:error, reason}` on failure.
+  Returns `{:ok, %Results{}}` on success or `{:error, reason}` on failure. See `DeltaQuery.Results`
+  for the meaning of `files_processed` and `total_files`.
 
   ## Examples
 
@@ -133,14 +133,8 @@ defmodule DeltaQuery.Query do
   def execute(%__MODULE__{} = query, opts \\ []) do
     with {:ok, config} <- get_config(opts),
          client = Client.from_config(config),
-         {:ok, %{files: files}} when is_list(files) <- query_table(client, config, query) do
-      process_files(client, files, query)
-    else
-      {:ok, _empty_response} ->
-        {:ok, empty_results(query.columns)}
-
-      {:error, reason} ->
-        {:error, reason}
+         {:ok, %{files: files}} <- query_table(client, config, query) do
+      Client.parse_parquet_files(client, files, predicates: query.filters, columns: query.columns)
     end
   end
 
@@ -163,34 +157,6 @@ defmodule DeltaQuery.Query do
       {:ok, results} -> results
       {:error, reason} -> raise "Query execution failed: #{inspect(reason)}"
     end
-  end
-
-  defp process_files(_client, [], query) do
-    {:ok, empty_results(query.columns)}
-  end
-
-  defp process_files(client, files, query) do
-    total_files = length(files)
-
-    with {:ok, df} <-
-           Client.parse_parquet_files(client, files,
-             predicates: query.filters,
-             columns: query.columns
-           ) do
-      {:ok, %Results{dataframe: df, files_processed: total_files, total_files: total_files}}
-    end
-  end
-
-  defp empty_results(columns) do
-    %Results{dataframe: empty_dataframe(columns), files_processed: 0, total_files: 0}
-  end
-
-  defp empty_dataframe(nil), do: DataFrame.new([])
-
-  defp empty_dataframe(columns) when is_list(columns) do
-    columns
-    |> Map.new(fn col -> {col, []} end)
-    |> DataFrame.new()
   end
 
   defp get_config(opts) do

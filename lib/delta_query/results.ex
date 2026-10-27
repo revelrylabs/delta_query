@@ -3,8 +3,10 @@ defmodule DeltaQuery.Results do
   In-memory operations on query results.
 
   A `%DeltaQuery.Results{}` holds the `Explorer.DataFrame` returned by `DeltaQuery.Query.execute/2`,
-  plus `files_processed` and `total_files` counts. Every function in this module operates on data
-  that has already been fetched.
+  plus two counts: `total_files` is the number of files left after partition pruning, and
+  `files_processed` how many of those were downloaded and parsed. When they differ, that means some files
+  failed and were skipped, so the data is incomplete.
+  data that has already been fetched.
 
   Rows from `to_rows/1` are maps with string keys. Values use Explorer's types: `Date`,
   `NaiveDateTime`, `Decimal` for decimal columns, and `nil` for null.

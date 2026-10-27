@@ -28,6 +28,7 @@ defmodule DeltaQuery.Client do
 
   alias DeltaQuery.Config
   alias DeltaQuery.PredicateParser
+  alias DeltaQuery.Results
   alias Explorer.DataFrame
 
   require Logger
@@ -128,9 +129,9 @@ defmodule DeltaQuery.Client do
   @doc """
   Download and parse Parquet files from Delta Sharing query response.
 
-  Returns `{:ok, dataframe}` on success, where the dataframe is an `Explorer.DataFrame`
-  enabling joins, grouping, and aggregations. Use `Explorer.DataFrame.to_rows/1` to
-  convert it to a list of maps if needed.
+  Returns `{:ok, results}` on success. `results.dataframe` is an `Explorer.DataFrame` enabling
+  joins, grouping, and aggregations. See `DeltaQuery.Results` for the meaning of
+  `files_processed` and `total_files`.
 
   Returns `{:error, message}` when a predicate cannot be applied, for example when an
   ordering operator (`>`, `<`, `>=`, `<=`) targets a column whose type does not support
@@ -143,7 +144,7 @@ defmodule DeltaQuery.Client do
   - `:columns` - List of column names to return (nil = all columns)
   """
   @spec parse_parquet_files(t(), list(map()), keyword()) ::
-          {:ok, DataFrame.t()} | {:error, String.t()}
+          {:ok, Results.t()} | {:error, String.t()}
   def parse_parquet_files(%__MODULE__{} = client, files, opts \\ []) do
     predicates = Keyword.get(opts, :predicates, [])
     columns = Keyword.get(opts, :columns)
@@ -151,22 +152,22 @@ defmodule DeltaQuery.Client do
     parsed_predicates = parse_predicates(predicates)
     relevant_files = filter_files_by_partitions(files, parsed_predicates)
 
-    process_files_to_dataframe(client, relevant_files, parsed_predicates, columns)
+    process_files_to_results(client, relevant_files, parsed_predicates, columns)
   end
 
-  defp process_files_to_dataframe(client, files, parsed_predicates, columns) do
+  defp process_files_to_results(client, files, parsed_predicates, columns) do
     total_files = length(files)
 
     result =
       files
       |> Enum.with_index(1)
-      |> Enum.reduce_while({:ok, []}, fn {file, index}, {:ok, dfs_acc} ->
+      |> Enum.reduce_while({:ok, [], 0}, fn {file, index}, {:ok, dfs_acc, processed} ->
         case download_and_parse_parquet_df(client, file, parsed_predicates, columns) do
           {:ok, df} ->
             if DataFrame.n_rows(df) > 0 do
-              {:cont, {:ok, [df | dfs_acc]}}
+              {:cont, {:ok, [df | dfs_acc], processed + 1}}
             else
-              {:cont, {:ok, dfs_acc}}
+              {:cont, {:ok, dfs_acc, processed + 1}}
             end
 
           {:error, {:invalid_predicate, message}} ->
@@ -174,21 +175,19 @@ defmodule DeltaQuery.Client do
 
           {:error, reason} ->
             Logger.error("failed to parse file #{index}/#{total_files}: #{inspect(reason)}")
-            {:cont, {:ok, dfs_acc}}
+            {:cont, {:ok, dfs_acc, processed}}
         end
       end)
 
-    with {:ok, dataframes} <- result do
-      case Enum.reverse(dataframes) do
-        [] ->
-          {:ok, empty_dataframe(columns)}
+    with {:ok, dataframes, processed} <- result do
+      df =
+        case Enum.reverse(dataframes) do
+          [] -> empty_dataframe(columns)
+          [single] -> single
+          multiple -> concat_with_common_columns(multiple)
+        end
 
-        [single] ->
-          {:ok, single}
-
-        multiple ->
-          {:ok, concat_with_common_columns(multiple)}
-      end
+      {:ok, %Results{dataframe: df, files_processed: processed, total_files: total_files}}
     end
   end
 
@@ -298,7 +297,7 @@ defmodule DeltaQuery.Client do
   defp maybe_add_predicates(body, []), do: body
   defp maybe_add_predicates(body, predicates), do: Map.put(body, "predicateHints", predicates)
 
-  defp download_and_parse_parquet_df(client, %{"url" => url} = _file, parsed_predicates, columns) do
+  defp download_and_parse_parquet_df(client, %{"url" => url}, parsed_predicates, columns) do
     case Req.get(client.download_req, url: url, decode_body: false) do
       {:ok, %Req.Response{status: 200, body: parquet_data}} ->
         parse_parquet_to_df(parquet_data, parsed_predicates, columns)
@@ -313,6 +312,10 @@ defmodule DeltaQuery.Client do
         Logger.error("request failed for parquet file: #{inspect(reason)}")
         {:error, {:request_failed, reason}}
     end
+  end
+
+  defp download_and_parse_parquet_df(_client, file, _parsed_predicates, _columns) do
+    {:error, {:missing_url, Map.keys(file)}}
   end
 
   defp parse_parquet_to_df(parquet_binary, parsed_predicates, columns) do
@@ -361,30 +364,43 @@ defmodule DeltaQuery.Client do
   defp file_matches_predicates?(_partition_values, []), do: true
 
   defp file_matches_predicates?(partition_values, predicates) do
-    Enum.all?(predicates, fn {op, column, value} ->
+    Enum.all?(predicates, fn {op, column, predicate_value} ->
       case Map.get(partition_values, column) do
-        nil -> true
-        partition_value -> matches_predicate?(op, normalize_value(partition_value), value)
+        nil ->
+          true
+
+        partition_value ->
+          matches_predicate?(op, coerce_partition_value(partition_value, predicate_value), predicate_value)
       end
     end)
   end
 
-  defp matches_predicate?(:eq, partition_value, value), do: partition_value == value
-  defp matches_predicate?(:neq, partition_value, value), do: partition_value != value
-  defp matches_predicate?(:gt, partition_value, value), do: partition_value > value
-  defp matches_predicate?(:lt, partition_value, value), do: partition_value < value
-  defp matches_predicate?(:gte, partition_value, value), do: partition_value >= value
-  defp matches_predicate?(:lte, partition_value, value), do: partition_value <= value
+  defp matches_predicate?(:eq, partition_value, predicate_value), do: partition_value == predicate_value
+  defp matches_predicate?(:neq, partition_value, predicate_value), do: partition_value != predicate_value
+  defp matches_predicate?(:gt, partition_value, predicate_value), do: partition_value > predicate_value
+  defp matches_predicate?(:lt, partition_value, predicate_value), do: partition_value < predicate_value
+  defp matches_predicate?(:gte, partition_value, predicate_value), do: partition_value >= predicate_value
+  defp matches_predicate?(:lte, partition_value, predicate_value), do: partition_value <= predicate_value
 
-  defp normalize_value(value) when is_binary(value) do
-    cond do
-      Regex.match?(~r/^-?\d+$/, value) -> String.to_integer(value)
-      Regex.match?(~r/^-?\d+\.\d+$/, value) -> String.to_float(value)
-      true -> value
+  defp coerce_partition_value(partition_value, predicate_value)
+       when is_binary(partition_value) and is_number(predicate_value) do
+    case parse_number(partition_value) do
+      :error -> partition_value
+      number -> number
     end
   end
 
-  defp normalize_value(value), do: value
+  defp coerce_partition_value("true", predicate_value) when is_boolean(predicate_value), do: true
+  defp coerce_partition_value("false", predicate_value) when is_boolean(predicate_value), do: false
+  defp coerce_partition_value(partition_value, _predicate_value), do: partition_value
+
+  defp parse_number(string) do
+    case {Integer.parse(string), Float.parse(string)} do
+      {{integer, ""}, _} -> integer
+      {_, {float, ""}} -> float
+      _ -> :error
+    end
+  end
 
   defp apply_predicates(df, predicates) when is_list(predicates) do
     Enum.reduce_while(predicates, {:ok, df}, fn predicate, {:ok, acc} ->
