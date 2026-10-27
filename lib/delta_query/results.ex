@@ -4,8 +4,8 @@ defmodule DeltaQuery.Results do
 
   A `%DeltaQuery.Results{}` holds the `Explorer.DataFrame` returned by `DeltaQuery.Query.execute/2`,
   plus two counts: `total_files` is the number of files left after partition pruning, and
-  `files_processed` how many of those were downloaded and parsed. When they differ, some files
-  failed and were skipped, so the data is incomplete. Every function in this module operates on
+  `files_processed` how many of those were downloaded and parsed. When they differ, that means some files
+  failed and were skipped, so the data is incomplete.
   data that has already been fetched.
 
   Rows from `to_rows/1` are maps with string keys. Values use Explorer's types: `Date`,
