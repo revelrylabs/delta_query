@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Partition pruning compares boolean and numeric partition values by type, so
+  `where("available = true")` no longer skips every file of a table partitioned on a boolean
+
 ## [0.3.1] - 2026-10-23
 
 ### Added

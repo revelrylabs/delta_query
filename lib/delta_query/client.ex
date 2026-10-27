@@ -364,7 +364,7 @@ defmodule DeltaQuery.Client do
     Enum.all?(predicates, fn {op, column, value} ->
       case Map.get(partition_values, column) do
         nil -> true
-        partition_value -> matches_predicate?(op, normalize_value(partition_value), value)
+        partition_value -> matches_predicate?(op, coerce_partition_value(partition_value, value), value)
       end
     end)
   end
@@ -376,15 +376,24 @@ defmodule DeltaQuery.Client do
   defp matches_predicate?(:gte, partition_value, value), do: partition_value >= value
   defp matches_predicate?(:lte, partition_value, value), do: partition_value <= value
 
-  defp normalize_value(value) when is_binary(value) do
-    cond do
-      Regex.match?(~r/^-?\d+$/, value) -> String.to_integer(value)
-      Regex.match?(~r/^-?\d+\.\d+$/, value) -> String.to_float(value)
-      true -> value
+  defp coerce_partition_value(partition_value, value) when is_binary(partition_value) and is_number(value) do
+    case parse_number(partition_value) do
+      :error -> partition_value
+      number -> number
     end
   end
 
-  defp normalize_value(value), do: value
+  defp coerce_partition_value("true", value) when is_boolean(value), do: true
+  defp coerce_partition_value("false", value) when is_boolean(value), do: false
+  defp coerce_partition_value(partition_value, _value), do: partition_value
+
+  defp parse_number(string) do
+    case {Integer.parse(string), Float.parse(string)} do
+      {{integer, ""}, _} -> integer
+      {_, {float, ""}} -> float
+      _ -> :error
+    end
+  end
 
   defp apply_predicates(df, predicates) when is_list(predicates) do
     Enum.reduce_while(predicates, {:ok, df}, fn predicate, {:ok, acc} ->

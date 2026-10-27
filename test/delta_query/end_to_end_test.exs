@@ -108,9 +108,11 @@ defmodule DeltaQuery.EndToEndTest do
     end
 
     for {predicate, column, matching, other} <- [
+          {"available = true", "available", "true", "false"},
           {"category = 'Fiction'", "category", "Fiction", "Mystery"},
           {"price > 9.5", "price", "10.0", "9.0"},
-          {"year >= 2024", "year", "2024", "2023"}
+          {"year >= 2024", "year", "2024", "2023"},
+          {"shard_id > 9007199254740992", "shard_id", "9007199254740993", "9007199254740992"}
         ] do
       test "prunes files on partition value with predicate #{predicate}" do
         config =
