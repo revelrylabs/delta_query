@@ -133,8 +133,12 @@ defmodule DeltaQuery.Query do
   def execute(%__MODULE__{} = query, opts \\ []) do
     with {:ok, config} <- get_config(opts),
          client = Client.from_config(config),
-         {:ok, %{files: files}} <- query_table(client, config, query) do
-      Client.parse_parquet_files(client, files, predicates: query.filters, columns: query.columns)
+         {:ok, %{files: files, metadata: metadata}} <- query_table(client, config, query) do
+      Client.parse_parquet_files(client, files,
+        predicates: query.filters,
+        columns: query.columns,
+        metadata: metadata
+      )
     end
   end
 

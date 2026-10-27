@@ -10,7 +10,7 @@ defmodule DeltaQuery.StubServer do
 
   - `:schemas` - schema names returned by the schemas endpoint
   - `:tables` - table names returned by the tables endpoint
-  - `:schema_string` - Delta schema JSON returned in table metadata
+  - `:schema_string` - Delta schema JSON returned in table metadata; see `books_schema/1`
   - `:files` - list of `%{name:, parquet:, partition_values:}`, served at `https://files.test/<name>`
   - `:format` - `:v1` wraps file actions in `"add"`, `:v2` in `"file"`
   - `:query_actions` - literal NDJSON action maps to return instead of generating them from `:files`
@@ -25,7 +25,11 @@ defmodule DeltaQuery.StubServer do
   @files_host "files.test"
   @token "stub-token"
 
-  @books_schema ~s({"type":"struct","fields":[{"name":"book_id","type":"long"},{"name":"title","type":"string"},{"name":"page_count","type":"long"}]})
+  @books_fields [
+    %{"name" => "book_id", "type" => "long"},
+    %{"name" => "title", "type" => "string"},
+    %{"name" => "page_count", "type" => "long"}
+  ]
 
   def endpoint, do: @endpoint
   def share, do: @share
@@ -40,6 +44,11 @@ defmodule DeltaQuery.StubServer do
       share: @share,
       req_options: [adapter: __MODULE__, retry: false]
     )
+  end
+
+  def books_schema(partition_fields \\ []) do
+    fields = @books_fields ++ Enum.map(partition_fields, fn {name, type} -> %{"name" => name, "type" => type} end)
+    Jason.encode!(%{"type" => "struct", "fields" => fields})
   end
 
   def file(name, %DataFrame{} = df, partition_values \\ %{}) do
@@ -64,7 +73,7 @@ defmodule DeltaQuery.StubServer do
     %{
       schemas: ["public", "analytics"],
       tables: ["books", "loans"],
-      schema_string: @books_schema,
+      schema_string: books_schema(),
       files: [fixture_file("books.parquet")],
       format: :v1,
       query_actions: nil,

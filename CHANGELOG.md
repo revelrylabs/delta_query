@@ -14,12 +14,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so a skipped download was invisible
 - **Breaking:** `DeltaQuery.Client.parse_parquet_files/3` returns `{:ok, %DeltaQuery.Results{}}`
   instead of `{:ok, dataframe}`. Read `results.dataframe` to get the previous value
+- `DeltaQuery.Client.parse_parquet_files/3` takes a `:metadata` option, the metadata action from
+  the query response, to type partition columns. Without it they are strings
 
 ### Fixed
 
 - Partition pruning compares boolean and numeric partition values by type, so
   `where("available = true")` no longer skips every file of a table partitioned on a boolean
 - A file action without a `url` is logged and skipped instead of raising `FunctionClauseError`
+- Partition columns are included in query results, cast to their type from the table schema.
+  Delta stores them outside the Parquet files, so they were absent from `to_rows/1`, dropped by
+  `select/2`, and unavailable to `filter/2` and `join/3`
 
 ## [0.3.1] - 2026-10-23
 

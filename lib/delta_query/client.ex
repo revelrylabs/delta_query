@@ -30,6 +30,7 @@ defmodule DeltaQuery.Client do
   alias DeltaQuery.PredicateParser
   alias DeltaQuery.Results
   alias Explorer.DataFrame
+  alias Explorer.Series
 
   require Logger
 
@@ -133,36 +134,45 @@ defmodule DeltaQuery.Client do
   joins, grouping, and aggregations. See `DeltaQuery.Results` for the meaning of
   `files_processed` and `total_files`.
 
+  Delta keeps partition column values in each file action's `partitionValues` rather than in
+  the Parquet data, so they are added to every row here. Pass the `:metadata` action from the
+  query response to have them cast to their Delta type; without it they are strings.
+
   Returns `{:error, message}` when a predicate cannot be applied, for example when an
   ordering operator (`>`, `<`, `>=`, `<=`) targets a column whose type does not support
   ordering. Processing stops at the first such error. Files that fail to download or
-  parse are logged and skipped rather than returned as errors.
+  parse, including files whose partition values cannot be cast, are logged and skipped
+  rather than returned as errors.
 
   ## Options
 
   - `:predicates` - List of SQL-like filter strings (e.g., ["genre = 'Fiction'", "book_id = 123"])
   - `:columns` - List of column names to return (nil = all columns)
+  - `:metadata` - The metadata action (`%{"metaData" => ...}`) returned as `:metadata` by
+    `query_table/5`, used to type partition columns
   """
   @spec parse_parquet_files(t(), list(map()), keyword()) ::
           {:ok, Results.t()} | {:error, String.t()}
   def parse_parquet_files(%__MODULE__{} = client, files, opts \\ []) do
     predicates = Keyword.get(opts, :predicates, [])
     columns = Keyword.get(opts, :columns)
+    column_types = column_types(Keyword.get(opts, :metadata))
 
     parsed_predicates = parse_predicates(predicates)
+
     relevant_files = filter_files_by_partitions(files, parsed_predicates)
 
-    process_files_to_results(client, relevant_files, parsed_predicates, columns)
+    process_files_to_results(client, relevant_files, parsed_predicates, columns, column_types)
   end
 
-  defp process_files_to_results(client, files, parsed_predicates, columns) do
+  defp process_files_to_results(client, files, parsed_predicates, columns, column_types) do
     total_files = length(files)
 
     result =
       files
       |> Enum.with_index(1)
       |> Enum.reduce_while({:ok, [], 0}, fn {file, index}, {:ok, dfs_acc, processed} ->
-        case download_and_parse_parquet_df(client, file, parsed_predicates, columns) do
+        case download_and_parse_parquet_df(client, file, parsed_predicates, columns, column_types) do
           {:ok, df} ->
             if DataFrame.n_rows(df) > 0 do
               {:cont, {:ok, [df | dfs_acc], processed + 1}}
@@ -297,10 +307,11 @@ defmodule DeltaQuery.Client do
   defp maybe_add_predicates(body, []), do: body
   defp maybe_add_predicates(body, predicates), do: Map.put(body, "predicateHints", predicates)
 
-  defp download_and_parse_parquet_df(client, %{"url" => url}, parsed_predicates, columns) do
+  defp download_and_parse_parquet_df(client, %{"url" => url} = file, parsed_predicates, columns, column_types) do
     case Req.get(client.download_req, url: url, decode_body: false) do
       {:ok, %Req.Response{status: 200, body: parquet_data}} ->
-        parse_parquet_to_df(parquet_data, parsed_predicates, columns)
+        partition_values = Map.get(file, "partitionValues", %{})
+        parse_parquet_to_df(parquet_data, partition_values, column_types, parsed_predicates, columns)
 
       {:ok, %Req.Response{status: status, body: body}} ->
         body_preview = if is_binary(body), do: String.slice(body, 0..100), else: inspect(body)
@@ -314,14 +325,15 @@ defmodule DeltaQuery.Client do
     end
   end
 
-  defp download_and_parse_parquet_df(_client, file, _parsed_predicates, _columns) do
+  defp download_and_parse_parquet_df(_client, file, _parsed_predicates, _columns, _column_types) do
     {:error, {:missing_url, Map.keys(file)}}
   end
 
-  defp parse_parquet_to_df(parquet_binary, parsed_predicates, columns) do
+  defp parse_parquet_to_df(parquet_binary, partition_values, column_types, parsed_predicates, columns) do
     case DataFrame.load_parquet(parquet_binary) do
       {:ok, df} ->
-        with {:ok, filtered} <- apply_predicates(df, parsed_predicates) do
+        with {:ok, with_partitions} <- add_partition_columns(df, partition_values, column_types),
+             {:ok, filtered} <- apply_predicates(with_partitions, parsed_predicates) do
           {:ok, select_columns(filtered, columns)}
         end
 
@@ -401,6 +413,97 @@ defmodule DeltaQuery.Client do
       _ -> :error
     end
   end
+
+  defp column_types(%{"metaData" => %{"schemaString" => schema_string}}) when is_binary(schema_string) do
+    case Jason.decode(schema_string) do
+      {:ok, %{"fields" => fields}} when is_list(fields) -> Map.new(fields, &{&1["name"], &1["type"]})
+      _ -> %{}
+    end
+  end
+
+  defp column_types(_metadata), do: %{}
+
+  defp add_partition_columns(df, partition_values, column_types) do
+    existing = DataFrame.names(df)
+    missing = Map.reject(partition_values, fn {column, _value} -> column in existing end)
+
+    with {:ok, series} <- partition_series(missing, column_types) do
+      {:ok, Enum.reduce(series, df, fn {column, values}, acc -> DataFrame.put(acc, column, values) end)}
+    end
+  end
+
+  defp partition_series(partition_values, column_types) do
+    Enum.reduce_while(partition_values, {:ok, []}, fn {column, value}, {:ok, acc} ->
+      dtype = partition_dtype(Map.get(column_types, column))
+
+      case parse_partition_value(value, dtype) do
+        {:ok, parsed} -> {:cont, {:ok, [{column, Series.from_list([parsed], dtype: dtype)} | acc]}}
+        :error -> {:halt, {:error, {:invalid_partition_value, column, value}}}
+      end
+    end)
+  end
+
+  defp partition_dtype("long"), do: {:s, 64}
+  defp partition_dtype("integer"), do: {:s, 32}
+  defp partition_dtype("short"), do: {:s, 16}
+  defp partition_dtype("byte"), do: {:s, 8}
+  defp partition_dtype("double"), do: {:f, 64}
+  defp partition_dtype("float"), do: {:f, 32}
+  defp partition_dtype("boolean"), do: :boolean
+  defp partition_dtype("date"), do: :date
+  defp partition_dtype("timestamp"), do: {:naive_datetime, :microsecond}
+  defp partition_dtype("timestamp_ntz"), do: {:naive_datetime, :microsecond}
+
+  defp partition_dtype("decimal(" <> rest) do
+    case Regex.run(~r/^(\d+),\s*(\d+)\)$/, rest) do
+      [_, precision, scale] -> {:decimal, String.to_integer(precision), String.to_integer(scale)}
+      nil -> :string
+    end
+  end
+
+  defp partition_dtype(_type), do: :string
+
+  defp parse_partition_value(nil, _dtype), do: {:ok, nil}
+  defp parse_partition_value(value, :string) when is_binary(value), do: {:ok, value}
+  defp parse_partition_value("true", :boolean), do: {:ok, true}
+  defp parse_partition_value("false", :boolean), do: {:ok, false}
+
+  defp parse_partition_value(value, {:s, _}) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} -> {:ok, integer}
+      _ -> :error
+    end
+  end
+
+  defp parse_partition_value(value, {:f, _}) when is_binary(value) do
+    case Float.parse(value) do
+      {float, ""} -> {:ok, float}
+      _ -> :error
+    end
+  end
+
+  defp parse_partition_value(value, :date) when is_binary(value) do
+    case Date.from_iso8601(value) do
+      {:ok, date} -> {:ok, date}
+      {:error, _} -> :error
+    end
+  end
+
+  defp parse_partition_value(value, {:naive_datetime, _}) when is_binary(value) do
+    case NaiveDateTime.from_iso8601(value) do
+      {:ok, datetime} -> {:ok, datetime}
+      {:error, _} -> :error
+    end
+  end
+
+  defp parse_partition_value(value, {:decimal, _, _}) when is_binary(value) do
+    case Decimal.parse(value) do
+      {decimal, ""} -> {:ok, decimal}
+      _ -> :error
+    end
+  end
+
+  defp parse_partition_value(_value, _dtype), do: :error
 
   defp apply_predicates(df, predicates) when is_list(predicates) do
     Enum.reduce_while(predicates, {:ok, df}, fn predicate, {:ok, acc} ->
