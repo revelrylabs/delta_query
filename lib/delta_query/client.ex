@@ -28,6 +28,7 @@ defmodule DeltaQuery.Client do
 
   alias DeltaQuery.Config
   alias DeltaQuery.PredicateParser
+  alias DeltaQuery.Results
   alias Explorer.DataFrame
 
   require Logger
@@ -128,9 +129,9 @@ defmodule DeltaQuery.Client do
   @doc """
   Download and parse Parquet files from Delta Sharing query response.
 
-  Returns `{:ok, dataframe}` on success, where the dataframe is an `Explorer.DataFrame`
-  enabling joins, grouping, and aggregations. Use `Explorer.DataFrame.to_rows/1` to
-  convert it to a list of maps if needed.
+  Returns `{:ok, results}` on success. `results.dataframe` is an `Explorer.DataFrame` enabling
+  joins, grouping, and aggregations. See `DeltaQuery.Results` for the meaning of
+  `files_processed` and `total_files`.
 
   Returns `{:error, message}` when a predicate cannot be applied, for example when an
   ordering operator (`>`, `<`, `>=`, `<=`) targets a column whose type does not support
@@ -143,7 +144,7 @@ defmodule DeltaQuery.Client do
   - `:columns` - List of column names to return (nil = all columns)
   """
   @spec parse_parquet_files(t(), list(map()), keyword()) ::
-          {:ok, DataFrame.t()} | {:error, String.t()}
+          {:ok, Results.t()} | {:error, String.t()}
   def parse_parquet_files(%__MODULE__{} = client, files, opts \\ []) do
     predicates = Keyword.get(opts, :predicates, [])
     columns = Keyword.get(opts, :columns)
@@ -151,22 +152,22 @@ defmodule DeltaQuery.Client do
     parsed_predicates = parse_predicates(predicates)
     relevant_files = filter_files_by_partitions(files, parsed_predicates)
 
-    process_files_to_dataframe(client, relevant_files, parsed_predicates, columns)
+    process_files_to_results(client, relevant_files, parsed_predicates, columns)
   end
 
-  defp process_files_to_dataframe(client, files, parsed_predicates, columns) do
+  defp process_files_to_results(client, files, parsed_predicates, columns) do
     total_files = length(files)
 
     result =
       files
       |> Enum.with_index(1)
-      |> Enum.reduce_while({:ok, []}, fn {file, index}, {:ok, dfs_acc} ->
+      |> Enum.reduce_while({:ok, [], 0}, fn {file, index}, {:ok, dfs_acc, processed} ->
         case download_and_parse_parquet_df(client, file, parsed_predicates, columns) do
           {:ok, df} ->
             if DataFrame.n_rows(df) > 0 do
-              {:cont, {:ok, [df | dfs_acc]}}
+              {:cont, {:ok, [df | dfs_acc], processed + 1}}
             else
-              {:cont, {:ok, dfs_acc}}
+              {:cont, {:ok, dfs_acc, processed + 1}}
             end
 
           {:error, {:invalid_predicate, message}} ->
@@ -174,21 +175,19 @@ defmodule DeltaQuery.Client do
 
           {:error, reason} ->
             Logger.error("failed to parse file #{index}/#{total_files}: #{inspect(reason)}")
-            {:cont, {:ok, dfs_acc}}
+            {:cont, {:ok, dfs_acc, processed}}
         end
       end)
 
-    with {:ok, dataframes} <- result do
-      case Enum.reverse(dataframes) do
-        [] ->
-          {:ok, empty_dataframe(columns)}
+    with {:ok, dataframes, processed} <- result do
+      df =
+        case Enum.reverse(dataframes) do
+          [] -> empty_dataframe(columns)
+          [single] -> single
+          multiple -> concat_with_common_columns(multiple)
+        end
 
-        [single] ->
-          {:ok, single}
-
-        multiple ->
-          {:ok, concat_with_common_columns(multiple)}
-      end
+      {:ok, %Results{dataframe: df, files_processed: processed, total_files: total_files}}
     end
   end
 

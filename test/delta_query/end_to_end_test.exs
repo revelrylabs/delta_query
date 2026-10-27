@@ -103,6 +103,7 @@ defmodule DeltaQuery.EndToEndTest do
       {:ok, results} = "books" |> DeltaQuery.query() |> DeltaQuery.where("library_id = 100") |> execute(config)
 
       assert DeltaQuery.count(results) == 3
+      assert %{files_processed: 1, total_files: 1} = results
       assert_received {:stub_request, :get, "/lib-100.parquet", nil, _}
       refute_received {:stub_request, :get, "/lib-200.parquet", nil, _}
     end
@@ -129,6 +130,22 @@ defmodule DeltaQuery.EndToEndTest do
         assert_received {:stub_request, :get, "/match.parquet", nil, _}
         refute_received {:stub_request, :get, "/other.parquet", nil, _}
       end
+    end
+
+    test "skips files that fail to download and reports the shortfall in the counts" do
+      config =
+        StubServer.config(%{
+          files: [
+            StubServer.fixture_file("books.parquet", "part-1.parquet"),
+            StubServer.fixture_file("books.parquet", "part-2.parquet")
+          ],
+          errors: %{"/part-2.parquet" => {403, "denied"}}
+        })
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> execute(config)
+
+      assert DeltaQuery.count(results) == 3
+      assert %{files_processed: 1, total_files: 2} = results
     end
 
     test "returns an error for a query response that is not NDJSON" do

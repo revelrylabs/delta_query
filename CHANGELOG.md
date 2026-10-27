@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `DeltaQuery.Results.files_processed` counts only files that were downloaded and parsed, and
+  `total_files` counts files left after partition pruning. Previously both were always equal,
+  so a skipped download was invisible
+- **Breaking:** `DeltaQuery.Client.parse_parquet_files/3` returns `{:ok, %DeltaQuery.Results{}}`
+  instead of `{:ok, dataframe}`. Read `results.dataframe` to get the previous value
+
 ### Fixed
 
 - Partition pruning compares boolean and numeric partition values by type, so
