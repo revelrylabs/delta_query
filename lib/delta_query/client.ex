@@ -136,7 +136,8 @@ defmodule DeltaQuery.Client do
 
   Delta keeps partition column values in each file action's `partitionValues` rather than in
   the Parquet data, so they are added to every row here. Pass the `:metadata` action from the
-  query response to have them cast to their Delta type; without it they are strings.
+  query response to have them cast to their Delta type; without it they are strings, both in
+  the rows and when predicates are checked against them to skip files.
 
   Returns `{:error, message}` when a predicate cannot be applied, for example when an
   ordering operator (`>`, `<`, `>=`, `<=`) targets a column whose type does not support
@@ -160,9 +161,9 @@ defmodule DeltaQuery.Client do
 
     parsed_predicates = parse_predicates(predicates)
 
-    relevant_files = filter_files_by_partitions(files, parsed_predicates)
-
-    process_files_to_results(client, relevant_files, parsed_predicates, columns, column_types)
+    with {:ok, relevant_files} <- filter_files_by_partitions(files, parsed_predicates, column_types) do
+      process_files_to_results(client, relevant_files, parsed_predicates, columns, column_types)
+    end
   end
 
   defp process_files_to_results(client, files, parsed_predicates, columns, column_types) do
@@ -358,59 +359,40 @@ defmodule DeltaQuery.Client do
     end
   end
 
-  defp filter_files_by_partitions(files, []), do: files
+  defp filter_files_by_partitions(files, parsed_predicates, column_types) do
+    case Enum.reject(parsed_predicates, &is_nil/1) do
+      [] ->
+        {:ok, files}
 
-  defp filter_files_by_partitions(files, parsed_predicates) do
-    predicates_without_nil = Enum.reject(parsed_predicates, &is_nil/1)
+      predicates ->
+        kept =
+          Enum.reduce_while(files, {:ok, []}, fn file, {:ok, kept} ->
+            case file_matches_predicates(file, predicates, column_types) do
+              {:ok, true} -> {:cont, {:ok, [file | kept]}}
+              {:ok, false} -> {:cont, {:ok, kept}}
+              {:error, {:invalid_predicate, message}} -> {:halt, {:error, message}}
+            end
+          end)
 
-    if Enum.empty?(predicates_without_nil) do
-      files
-    else
-      Enum.filter(files, fn file ->
-        partition_values = Map.get(file, "partitionValues", %{})
-        file_matches_predicates?(partition_values, predicates_without_nil)
-      end)
+        with {:ok, files} <- kept, do: {:ok, Enum.reverse(files)}
     end
   end
 
-  defp file_matches_predicates?(_partition_values, []), do: true
+  defp file_matches_predicates(file, predicates, column_types) do
+    case Map.get(file, "partitionValues", %{}) do
+      values when map_size(values) == 0 ->
+        {:ok, true}
 
-  defp file_matches_predicates?(partition_values, predicates) do
-    Enum.all?(predicates, fn {op, column, predicate_value} ->
-      case Map.get(partition_values, column) do
-        nil ->
-          true
+      values ->
+        case partition_series(values, column_types) do
+          {:ok, series} ->
+            with {:ok, filtered} <- apply_predicates(DataFrame.new(Map.new(series)), predicates) do
+              {:ok, DataFrame.n_rows(filtered) == 1}
+            end
 
-        partition_value ->
-          matches_predicate?(op, coerce_partition_value(partition_value, predicate_value), predicate_value)
-      end
-    end)
-  end
-
-  defp matches_predicate?(:eq, partition_value, predicate_value), do: partition_value == predicate_value
-  defp matches_predicate?(:neq, partition_value, predicate_value), do: partition_value != predicate_value
-  defp matches_predicate?(:gt, partition_value, predicate_value), do: partition_value > predicate_value
-  defp matches_predicate?(:lt, partition_value, predicate_value), do: partition_value < predicate_value
-  defp matches_predicate?(:gte, partition_value, predicate_value), do: partition_value >= predicate_value
-  defp matches_predicate?(:lte, partition_value, predicate_value), do: partition_value <= predicate_value
-
-  defp coerce_partition_value(partition_value, predicate_value)
-       when is_binary(partition_value) and is_number(predicate_value) do
-    case parse_number(partition_value) do
-      :error -> partition_value
-      number -> number
-    end
-  end
-
-  defp coerce_partition_value("true", predicate_value) when is_boolean(predicate_value), do: true
-  defp coerce_partition_value("false", predicate_value) when is_boolean(predicate_value), do: false
-  defp coerce_partition_value(partition_value, _predicate_value), do: partition_value
-
-  defp parse_number(string) do
-    case {Integer.parse(string), Float.parse(string)} do
-      {{integer, ""}, _} -> integer
-      {_, {float, ""}} -> float
-      _ -> :error
+          {:error, _invalid_partition_value} ->
+            {:ok, true}
+        end
     end
   end
 

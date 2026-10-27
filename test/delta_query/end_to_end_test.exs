@@ -114,7 +114,8 @@ defmodule DeltaQuery.EndToEndTest do
           {"category = 'Fiction'", "category", "string", "Fiction", "Mystery"},
           {"price > 9.5", "price", "double", "10.0", "9.0"},
           {"year >= 2024", "year", "integer", "2024", "2023"},
-          {"shard_id > 9007199254740992", "shard_id", "long", "9007199254740993", "9007199254740992"}
+          {"shard_id > 9007199254740992", "shard_id", "long", "9007199254740993", "9007199254740992"},
+          {"stocked_on >= '2024-03-01'", "stocked_on", "date", "2024-03-01", "2024-02-29"}
         ] do
       test "prunes files on partition value with predicate #{predicate}" do
         config =
@@ -132,6 +133,49 @@ defmodule DeltaQuery.EndToEndTest do
         assert_received {:stub_request, :get, "/match.parquet", nil, _}
         refute_received {:stub_request, :get, "/other.parquet", nil, _}
       end
+    end
+
+    test "prunes a file whose partition value is null when the predicate needs a value" do
+      config =
+        StubServer.config(%{
+          schema_string: StubServer.books_schema([{"shelf_id", "long"}]),
+          files: [
+            StubServer.fixture_file("books.parquet", "shelf-7.parquet", %{"shelf_id" => "7"}),
+            StubServer.fixture_file("books.parquet", "shelf-null.parquet", %{"shelf_id" => nil})
+          ]
+        })
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> DeltaQuery.where("shelf_id = 7") |> execute(config)
+
+      assert %{files_processed: 1, total_files: 1} = results
+      refute_received {:stub_request, :get, "/shelf-null.parquet", nil, _}
+    end
+
+    test "returns an error when a where predicate cannot be applied to a partition column" do
+      config =
+        StubServer.config(%{
+          schema_string: StubServer.books_schema([{"region", "string"}]),
+          files: [StubServer.fixture_file("books.parquet", "east.parquet", %{"region" => "east"})]
+        })
+
+      {:error, message} = "books" |> DeltaQuery.query() |> DeltaQuery.where("region > 'a'") |> execute(config)
+
+      assert message =~ "operator >"
+      assert message =~ "region"
+      refute_received {:stub_request, :get, "/east.parquet", nil, _}
+    end
+
+    test "downloads a file whose partition value cannot be cast and then skips it" do
+      config =
+        StubServer.config(%{
+          schema_string: StubServer.books_schema([{"shelf_id", "long"}]),
+          files: [StubServer.fixture_file("books.parquet", "books.parquet", %{"shelf_id" => "seven"})]
+        })
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> DeltaQuery.where("shelf_id = 7") |> execute(config)
+
+      assert %{files_processed: 0, total_files: 1} = results
+      assert_received {:stub_request, :get, "/books.parquet", nil, _}
     end
 
     test "adds partition columns to every row, typed from the table schema" do
