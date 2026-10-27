@@ -297,7 +297,7 @@ defmodule DeltaQuery.Client do
   defp maybe_add_predicates(body, []), do: body
   defp maybe_add_predicates(body, predicates), do: Map.put(body, "predicateHints", predicates)
 
-  defp download_and_parse_parquet_df(client, %{"url" => url} = _file, parsed_predicates, columns) do
+  defp download_and_parse_parquet_df(client, %{"url" => url}, parsed_predicates, columns) do
     case Req.get(client.download_req, url: url, decode_body: false) do
       {:ok, %Req.Response{status: 200, body: parquet_data}} ->
         parse_parquet_to_df(parquet_data, parsed_predicates, columns)
@@ -312,6 +312,10 @@ defmodule DeltaQuery.Client do
         Logger.error("request failed for parquet file: #{inspect(reason)}")
         {:error, {:request_failed, reason}}
     end
+  end
+
+  defp download_and_parse_parquet_df(_client, file, _parsed_predicates, _columns) do
+    {:error, {:missing_url, Map.keys(file)}}
   end
 
   defp parse_parquet_to_df(parquet_binary, parsed_predicates, columns) do

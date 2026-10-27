@@ -148,6 +148,19 @@ defmodule DeltaQuery.EndToEndTest do
       assert %{files_processed: 1, total_files: 2} = results
     end
 
+    test "skips file actions that carry no url" do
+      action = %{
+        "file" => %{"id" => "x", "deltaSingleAction" => %{"add" => %{"path" => "https://files.test/books.parquet"}}}
+      }
+
+      config = StubServer.config(%{query_actions: [action]})
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> execute(config)
+
+      assert DeltaQuery.empty?(results)
+      assert %{files_processed: 0, total_files: 1} = results
+    end
+
     test "returns an error for a query response that is not NDJSON" do
       config = StubServer.config(%{raw_query_body: "<html>upstream timeout</html>"})
 
