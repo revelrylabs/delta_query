@@ -364,31 +364,35 @@ defmodule DeltaQuery.Client do
   defp file_matches_predicates?(_partition_values, []), do: true
 
   defp file_matches_predicates?(partition_values, predicates) do
-    Enum.all?(predicates, fn {op, column, value} ->
+    Enum.all?(predicates, fn {op, column, predicate_value} ->
       case Map.get(partition_values, column) do
-        nil -> true
-        partition_value -> matches_predicate?(op, coerce_partition_value(partition_value, value), value)
+        nil ->
+          true
+
+        partition_value ->
+          matches_predicate?(op, coerce_partition_value(partition_value, predicate_value), predicate_value)
       end
     end)
   end
 
-  defp matches_predicate?(:eq, partition_value, value), do: partition_value == value
-  defp matches_predicate?(:neq, partition_value, value), do: partition_value != value
-  defp matches_predicate?(:gt, partition_value, value), do: partition_value > value
-  defp matches_predicate?(:lt, partition_value, value), do: partition_value < value
-  defp matches_predicate?(:gte, partition_value, value), do: partition_value >= value
-  defp matches_predicate?(:lte, partition_value, value), do: partition_value <= value
+  defp matches_predicate?(:eq, partition_value, predicate_value), do: partition_value == predicate_value
+  defp matches_predicate?(:neq, partition_value, predicate_value), do: partition_value != predicate_value
+  defp matches_predicate?(:gt, partition_value, predicate_value), do: partition_value > predicate_value
+  defp matches_predicate?(:lt, partition_value, predicate_value), do: partition_value < predicate_value
+  defp matches_predicate?(:gte, partition_value, predicate_value), do: partition_value >= predicate_value
+  defp matches_predicate?(:lte, partition_value, predicate_value), do: partition_value <= predicate_value
 
-  defp coerce_partition_value(partition_value, value) when is_binary(partition_value) and is_number(value) do
+  defp coerce_partition_value(partition_value, predicate_value)
+       when is_binary(partition_value) and is_number(predicate_value) do
     case parse_number(partition_value) do
       :error -> partition_value
       number -> number
     end
   end
 
-  defp coerce_partition_value("true", value) when is_boolean(value), do: true
-  defp coerce_partition_value("false", value) when is_boolean(value), do: false
-  defp coerce_partition_value(partition_value, _value), do: partition_value
+  defp coerce_partition_value("true", predicate_value) when is_boolean(predicate_value), do: true
+  defp coerce_partition_value("false", predicate_value) when is_boolean(predicate_value), do: false
+  defp coerce_partition_value(partition_value, _predicate_value), do: partition_value
 
   defp parse_number(string) do
     case {Integer.parse(string), Float.parse(string)} do
