@@ -315,6 +315,19 @@ defmodule DeltaQuery.EndToEndTest do
       assert %{files_processed: 0, total_files: 1} = results
     end
 
+    test "skips a file whose partition value is out of range for its schema type" do
+      config =
+        StubServer.config(%{
+          schema_string: StubServer.books_schema([{"rack", "short"}]),
+          files: [StubServer.fixture_file("books.parquet", "books.parquet", %{"rack" => "70000"})]
+        })
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> execute(config)
+
+      assert DeltaQuery.empty?(results)
+      assert %{files_processed: 0, total_files: 1} = results
+    end
+
     test "skips files that fail to download and reports the shortfall in the counts" do
       config =
         StubServer.config(%{

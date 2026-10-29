@@ -444,9 +444,11 @@ defmodule DeltaQuery.Client do
   defp parse_partition_value("true", :boolean), do: {:ok, true}
   defp parse_partition_value("false", :boolean), do: {:ok, false}
 
-  defp parse_partition_value(value, {:s, _}) when is_binary(value) do
+  defp parse_partition_value(value, {:s, bits}) when is_binary(value) do
+    limit = Integer.pow(2, bits - 1)
+
     case Integer.parse(value) do
-      {integer, ""} -> {:ok, integer}
+      {integer, ""} when integer >= -limit and integer < limit -> {:ok, integer}
       _ -> :error
     end
   end
