@@ -129,16 +129,17 @@ defmodule DeltaQuery.Client do
   end
 
   @doc """
-  Download and parse Parquet files from Delta Sharing query response.
+  Download and parse the Parquet files in a Delta Sharing query response.
 
-  Returns `{:ok, results}` on success. `results.dataframe` is an `Explorer.DataFrame` enabling
+  Takes the `%{files: files, metadata: metadata}` map returned by `query_table/5`. Returns
+  `{:ok, results}` on success. `results.dataframe` is an `Explorer.DataFrame` enabling
   joins, grouping, and aggregations. See `DeltaQuery.Results` for the meaning of
   `files_processed` and `total_files`.
 
   Delta keeps partition column values in each file action's `partitionValues` rather than in
-  the Parquet data, so they are added to every row here. Pass the `:metadata` action from the
-  query response to have them cast to their Delta type; without it they are strings, both in
-  the rows and when predicates are checked against them to skip files.
+  the Parquet data, so they are added to every row here, cast to their type from the table
+  schema in `metadata`. The same typed values are checked against the predicates to skip
+  files before downloading them.
 
   Returns `{:error, message}` when a predicate cannot be applied, for example when an
   ordering operator (`>`, `<`, `>=`, `<=`) targets a column whose type does not support
@@ -150,16 +151,12 @@ defmodule DeltaQuery.Client do
 
   - `:predicates` - List of SQL-like filter strings (e.g., ["genre = 'Fiction'", "book_id = 123"])
   - `:columns` - List of column names to return (nil = all columns)
-  - `:metadata` - The metadata action (`%{"metaData" => ...}`) returned as `:metadata` by
-    `query_table/5`, used to type partition columns
   """
-  @spec parse_parquet_files(t(), list(map()), keyword()) ::
-          {:ok, Results.t()} | {:error, String.t()}
-  def parse_parquet_files(%__MODULE__{} = client, files, opts \\ []) do
+  @spec parse_parquet_files(t(), map(), keyword()) :: {:ok, Results.t()} | {:error, String.t()}
+  def parse_parquet_files(%__MODULE__{} = client, %{files: files, metadata: metadata}, opts \\ []) do
     predicates = Keyword.get(opts, :predicates, [])
     columns = Keyword.get(opts, :columns)
-    column_types = column_types(Keyword.get(opts, :metadata))
-
+    column_types = column_types(metadata)
     parsed_predicates = parse_predicates(predicates)
 
     with {:ok, relevant_files} <- filter_files_by_partitions(files, parsed_predicates, column_types) do

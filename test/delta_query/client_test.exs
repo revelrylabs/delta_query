@@ -59,14 +59,18 @@ defmodule DeltaQuery.ClientTest do
   describe "parse_parquet_files/3" do
     test "returns empty dataframe when no files provided" do
       client = Client.new("https://example.com", "token")
-      {:ok, %Results{dataframe: df, files_processed: 0, total_files: 0}} = Client.parse_parquet_files(client, [])
+
+      {:ok, %Results{dataframe: df, files_processed: 0, total_files: 0}} =
+        Client.parse_parquet_files(client, %{files: [], metadata: %{}})
 
       assert Explorer.DataFrame.n_rows(df) == 0
     end
 
     test "returns empty dataframe with specified columns when no files" do
       client = Client.new("https://example.com", "token")
-      {:ok, %Results{dataframe: df}} = Client.parse_parquet_files(client, [], columns: ["id", "name"])
+
+      {:ok, %Results{dataframe: df}} =
+        Client.parse_parquet_files(client, %{files: [], metadata: %{}}, columns: ["id", "name"])
 
       assert Explorer.DataFrame.n_rows(df) == 0
       assert Explorer.DataFrame.names(df) == ["id", "name"]
@@ -77,11 +81,11 @@ defmodule DeltaQuery.ClientTest do
     setup do
       client = Client.new("https://example.com", "token", adapter: ParquetAdapter)
 
-      %{client: client, files: [%{"url" => "https://files.example.com/part-0.parquet"}]}
+      %{client: client, response: %{files: [%{"url" => "https://files.example.com/part-0.parquet"}], metadata: %{}}}
     end
 
-    test "filters rows with an ordering operator on a numeric column", %{client: client, files: files} do
-      {:ok, %Results{dataframe: df}} = Client.parse_parquet_files(client, files, predicates: ["id >= 2"])
+    test "filters rows with an ordering operator on a numeric column", %{client: client, response: response} do
+      {:ok, %Results{dataframe: df}} = Client.parse_parquet_files(client, response, predicates: ["id >= 2"])
 
       assert Explorer.DataFrame.to_rows(df) == [
                %{"id" => 2, "revision" => "1"},
@@ -89,8 +93,8 @@ defmodule DeltaQuery.ClientTest do
              ]
     end
 
-    test "returns error when an ordering operator targets a string column", %{client: client, files: files} do
-      {:error, msg} = Client.parse_parquet_files(client, files, predicates: ["revision >= 1"])
+    test "returns error when an ordering operator targets a string column", %{client: client, response: response} do
+      {:error, msg} = Client.parse_parquet_files(client, response, predicates: ["revision >= 1"])
 
       assert msg =~ "operator >="
       assert msg =~ "revision"
@@ -99,14 +103,18 @@ defmodule DeltaQuery.ClientTest do
   end
 
   describe "parse_parquet_files/3 partition columns" do
-    test "adds partition columns as strings when no metadata is given" do
+    test "types partition columns from the response metadata" do
       client = Client.new("https://example.com", "token", adapter: ParquetAdapter)
-      files = [%{"url" => "https://files.example.com/part-0.parquet", "partitionValues" => %{"shelf_id" => "7"}}]
 
-      {:ok, %Results{dataframe: df}} = Client.parse_parquet_files(client, files)
+      response = %{
+        files: [%{"url" => "https://files.example.com/part-0.parquet", "partitionValues" => %{"shelf_id" => "7"}}],
+        metadata: %{"metaData" => %{"schemaString" => ~s({"fields":[{"name":"shelf_id","type":"long"}]})}}
+      }
 
-      assert Explorer.DataFrame.dtypes(df)["shelf_id"] == :string
-      assert Explorer.Series.to_list(df["shelf_id"]) == ["7", "7", "7"]
+      {:ok, %Results{dataframe: df}} = Client.parse_parquet_files(client, response)
+
+      assert Explorer.DataFrame.dtypes(df)["shelf_id"] == {:s, 64}
+      assert Explorer.Series.to_list(df["shelf_id"]) == [7, 7, 7]
     end
   end
 end
