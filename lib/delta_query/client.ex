@@ -414,7 +414,7 @@ defmodule DeltaQuery.Client do
 
       case parse_partition_value(value, dtype) do
         {:ok, parsed} -> {:cont, {:ok, [{column, Series.from_list([parsed], dtype: dtype)} | acc]}}
-        :error -> {:halt, {:error, {:invalid_partition_value, column, value}}}
+        :error -> {:halt, {:error, {:invalid_partition_value, {column, value}}}}
       end
     end)
   end
