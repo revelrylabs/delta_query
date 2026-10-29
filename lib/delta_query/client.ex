@@ -366,7 +366,7 @@ defmodule DeltaQuery.Client do
         {:ok, files}
 
       predicates ->
-        kept =
+        result =
           Enum.reduce_while(files, {:ok, []}, fn file, {:ok, kept} ->
             case file_matches_predicates(file, predicates, column_types) do
               {:ok, true} -> {:cont, {:ok, [file | kept]}}
@@ -375,7 +375,7 @@ defmodule DeltaQuery.Client do
             end
           end)
 
-        with {:ok, files} <- kept, do: {:ok, Enum.reverse(files)}
+        with {:ok, files} <- result, do: {:ok, Enum.reverse(files)}
     end
   end
 
