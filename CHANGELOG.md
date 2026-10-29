@@ -19,8 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer matches a predicate, a predicate that cannot be applied to a partition column returns
   an error instead of being ignored, and a literal whose type does not match the column raises
   the same `ArgumentError` as it does on any other column
-- `DeltaQuery.Client.parse_parquet_files/3` takes a `:metadata` option, the metadata action from
-  the query response, to type partition columns. Without it they are strings
+- **Breaking:** `DeltaQuery.Client.parse_parquet_files/3` takes a `:metadata` option, the metadata
+  action from the query response, to type partition columns. Without it partition columns are
+  strings, so a predicate with a non-string literal on one raises `ArgumentError`
 
 ### Fixed
 
