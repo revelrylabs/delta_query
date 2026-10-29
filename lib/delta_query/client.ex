@@ -26,6 +26,7 @@ defmodule DeltaQuery.Client do
   Example predicates: `["book_id = 123", "genre = 'Fiction'", "publication_date > '2024-01-01'"]`
   """
 
+  alias DeltaQuery.Column
   alias DeltaQuery.Config
   alias DeltaQuery.PredicateParser
   alias DeltaQuery.Results
@@ -396,14 +397,7 @@ defmodule DeltaQuery.Client do
     end
   end
 
-  defp column_types(%{"metaData" => %{"schemaString" => schema_string}}) when is_binary(schema_string) do
-    case Jason.decode(schema_string) do
-      {:ok, %{"fields" => fields}} when is_list(fields) -> Map.new(fields, &{&1["name"], &1["type"]})
-      _ -> %{}
-    end
-  end
-
-  defp column_types(_metadata), do: %{}
+  defp column_types(metadata), do: Map.new(Column.from_metadata(metadata), &{&1.name, &1.type})
 
   defp add_partition_columns(df, partition_values, column_types) do
     existing = DataFrame.names(df)
