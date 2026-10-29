@@ -17,8 +17,8 @@ defmodule DeltaQuery.Client do
   Predicates are SQL-like filter expressions used to reduce data transfer and improve performance.
   They work at two levels:
 
-  1. **Partition filtering** - Server-side filtering that excludes entire Parquet files based on
-     partition values, reducing the number of files downloaded.
+  1. **Partition filtering** - Predicates are sent to the server as hints, and the client skips
+     any file whose partition values do not match them, reducing the number of files downloaded.
 
   2. **Row filtering** - Client-side filtering applied after downloading Parquet files to further
      narrow results to matching rows.
