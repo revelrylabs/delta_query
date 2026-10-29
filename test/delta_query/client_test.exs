@@ -97,4 +97,16 @@ defmodule DeltaQuery.ClientTest do
       assert msg =~ "string"
     end
   end
+
+  describe "parse_parquet_files/3 partition columns" do
+    test "adds partition columns as strings when no metadata is given" do
+      client = Client.new("https://example.com", "token", adapter: ParquetAdapter)
+      files = [%{"url" => "https://files.example.com/part-0.parquet", "partitionValues" => %{"shelf_id" => "7"}}]
+
+      {:ok, %Results{dataframe: df}} = Client.parse_parquet_files(client, files)
+
+      assert Explorer.DataFrame.dtypes(df)["shelf_id"] == :string
+      assert Explorer.Series.to_list(df["shelf_id"]) == ["7", "7", "7"]
+    end
+  end
 end

@@ -189,7 +189,12 @@ defmodule DeltaQuery.EndToEndTest do
               {"stocked_on", "date"},
               {"unit_price", "double"},
               {"list_price", "decimal(10,2)"},
-              {"refreshed_at", "timestamp"}
+              {"refreshed_at", "timestamp"},
+              {"checked_at", "timestamp_ntz"},
+              {"aisle", "integer"},
+              {"rack", "short"},
+              {"bin", "byte"},
+              {"weight", "float"}
             ]),
           files: [
             StubServer.fixture_file("books.parquet", "east.parquet", %{
@@ -199,7 +204,12 @@ defmodule DeltaQuery.EndToEndTest do
               "stocked_on" => "2024-03-01",
               "unit_price" => "9.5",
               "list_price" => "12.50",
-              "refreshed_at" => "2024-03-01 10:15:00"
+              "refreshed_at" => "2024-03-01 10:15:00",
+              "checked_at" => "2024-03-02 08:00:00",
+              "aisle" => "12",
+              "rack" => "3",
+              "bin" => "1",
+              "weight" => "1.5"
             })
           ]
         })
@@ -216,6 +226,11 @@ defmodule DeltaQuery.EndToEndTest do
                "unit_price" => 9.5,
                "list_price" => list_price,
                "refreshed_at" => ~N[2024-03-01 10:15:00.000000],
+               "checked_at" => ~N[2024-03-02 08:00:00.000000],
+               "aisle" => 12,
+               "rack" => 3,
+               "bin" => 1,
+               "weight" => 1.5,
                "title" => "The Great Gatsby"
              } = DeltaQuery.first(results)
 
@@ -228,7 +243,12 @@ defmodule DeltaQuery.EndToEndTest do
                "stocked_on" => :date,
                "unit_price" => {:f, 64},
                "list_price" => {:decimal, 10, 2},
-               "refreshed_at" => {:naive_datetime, :microsecond}
+               "refreshed_at" => {:naive_datetime, :microsecond},
+               "checked_at" => {:naive_datetime, :microsecond},
+               "aisle" => {:s, 32},
+               "rack" => {:s, 16},
+               "bin" => {:s, 8},
+               "weight" => {:f, 32}
              } = DataFrame.dtypes(results.dataframe)
     end
 
