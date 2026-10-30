@@ -239,7 +239,8 @@ defmodule DeltaQuery.PredicateParser do
   Filter a dataframe with a parsed predicate.
 
   `column` must exist in `df`. Returns `{:error, message}` when an ordering operator
-  (`>`, `<`, `>=`, `<=`) targets a column type that does not support ordering.
+  (`>`, `<`, `>=`, `<=`) targets a column type that does not support ordering, or when
+  the literal's type does not match the column's type.
   """
   @spec filter_dataframe(DataFrame.t(), atom(), String.t(), term()) ::
           {:ok, DataFrame.t()} | {:error, String.t()}
@@ -247,11 +248,27 @@ defmodule DeltaQuery.PredicateParser do
     %{fun: fun, label: label, ordered: ordered} = Map.fetch!(@ops, op)
     column_type = df |> DataFrame.dtypes() |> Map.get(column)
 
-    if ordered and not orderable_dtype?(column_type) do
-      {:error, "operator #{label} not supported on #{inspect(column_type)} column '#{column}'"}
-    else
-      normalized_value = normalize_value(column_type, value)
-      {:ok, DataFrame.filter_with(df, fn lf -> fun.(lf[column], normalized_value) end)}
+    normalized_value = normalize_value(column_type, value)
+
+    cond do
+      ordered and not orderable_dtype?(column_type) ->
+        {:error, "operator #{label} not supported on #{inspect(column_type)} column '#{column}'"}
+
+      not literal_matches_dtype?(column_type, normalized_value) ->
+        {:error, "value #{inspect(value)} does not match #{inspect(column_type)} column '#{column}'"}
+
+      true ->
+        {:ok, DataFrame.filter_with(df, fn lf -> fun.(lf[column], normalized_value) end)}
     end
   end
+
+  defp literal_matches_dtype?({kind, _}, value) when kind in [:s, :u, :f], do: is_number(value)
+  defp literal_matches_dtype?({:decimal, _, _}, value), do: is_number(value)
+  defp literal_matches_dtype?({:duration, _}, value), do: is_integer(value)
+  defp literal_matches_dtype?(:boolean, value), do: is_boolean(value)
+  defp literal_matches_dtype?(:string, value), do: is_binary(value)
+  defp literal_matches_dtype?(:category, value), do: is_binary(value)
+  defp literal_matches_dtype?(:binary, value), do: is_binary(value)
+  defp literal_matches_dtype?(:date, value), do: is_struct(value, Date)
+  defp literal_matches_dtype?(_dtype, _value), do: false
 end

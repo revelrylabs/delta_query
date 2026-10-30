@@ -16,15 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of `{:ok, dataframe}`. Read `results.dataframe` to get the previous value
 - Partition pruning casts each file's partition values from the table schema and checks `where/2`
   predicates against them with the same rules as in-memory filtering. A null partition value no
-  longer matches a predicate, a predicate that cannot be applied to a partition column returns
-  an error instead of being ignored, and a literal whose type does not match the column raises
-  the same `ArgumentError` as it does on any other column
+  longer matches a predicate, and a predicate that cannot be applied to a partition column returns
+  an error instead of being ignored
 - **Breaking:** `DeltaQuery.Client.parse_parquet_files/3` takes the query response map returned by
   `query_table/5` instead of its file list, so partition columns can be typed from the table
   schema in its metadata
 
 ### Fixed
 
+- A `where/2` or `filter/2` literal whose type does not match the column, such as
+  `"library_id = '100'"` on an integer column, returns `{:error, "value ... does not match ..."}`
+  instead of raising `ArgumentError` from Explorer
+  ([#52](https://github.com/revelrylabs/delta_query/issues/52))
 - Partition pruning compares boolean and numeric partition values by type, so
   `where("available = true")` no longer skips every file of a table partitioned on a boolean
 - A file action without a `url` is logged and skipped instead of raising `FunctionClauseError`

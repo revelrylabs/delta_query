@@ -44,11 +44,15 @@ files, loads them with Explorer, applies your predicates, and returns rows as ma
   no OR.
 - Compare `date` columns with an ISO 8601 string: `"publication_date >= '2024-01-01'"`. A malformed
   date raises `ArgumentError`.
-- Ordering operators (`>`, `<`, `>=`, `<=`) work on integer, float, date, time, datetime and
-  duration columns. On string, boolean and decimal columns they return
+- Ordering operators (`>`, `<`, `>=`, `<=`) work on integer, float, date and duration
+  columns. On string, boolean and decimal columns they return
   `{:error, "operator > not supported on ..."}`.
-- Timestamp columns cannot be compared with a string literal yet; that raises a dtype-mismatch
-  `ArgumentError`. Filter `results.dataframe` with Explorer instead.
+- The value must match the column type: a number for integer, float and decimal columns, an
+  integer for duration columns, a quoted string for string and binary columns, `true`/`false` for
+  boolean columns. Anything else, including
+  `"book_id = '1002'"` on an integer column, returns `{:error, "value ... does not match ..."}`.
+- Timestamp and time columns cannot be compared with any literal yet; that returns the same error.
+  Filter `results.dataframe` with Explorer instead.
 - `where/2` predicates are sent to the server as partition hints and also applied to every row after
   download. Whole files are skipped only when the predicate names a partition column; a predicate on
   any other column still downloads every file.

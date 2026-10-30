@@ -131,6 +131,57 @@ defmodule DeltaQuery.ResultsTest do
       assert msg =~ "string"
     end
 
+    for {predicate, data} <- [
+          {"id = '1'", %{"id" => [1, 2, 3]}},
+          {"status = 1", %{"status" => ["a", "b"]}},
+          {"active = 1", %{"active" => [true, false]}},
+          {"id = true", %{"id" => [1, 2, 3]}},
+          {"at > '2024-01-01'", %{"at" => [~N[2024-06-01 00:00:00]]}},
+          {"day = 123", %{"day" => [~D[2024-01-01]]}}
+        ] do
+      test "returns error when the literal in #{predicate} does not match the column type" do
+        results = make_results(unquote(Macro.escape(data)))
+
+        {:error, msg} = Results.filter(results, [unquote(predicate)])
+
+        assert msg =~ "does not match"
+      end
+    end
+
+    test "compares a float literal with an integer column" do
+      results = make_results(%{"score" => [10, 50, 100]})
+
+      {:ok, filtered} = Results.filter(results, ["score > 25.5"])
+
+      assert Results.count(filtered) == 2
+    end
+
+    test "compares an integer literal with a duration column" do
+      elapsed = Explorer.Series.cast(Explorer.Series.from_list([1000, 2000]), {:duration, :millisecond})
+      results = %Results{dataframe: Explorer.DataFrame.new(%{"elapsed" => elapsed}), files_processed: 1, total_files: 1}
+
+      {:ok, filtered} = Results.filter(results, ["elapsed > 1500"])
+
+      assert Results.count(filtered) == 1
+    end
+
+    test "compares a number literal with a decimal column" do
+      results = make_results(%{"price" => [Decimal.new("1.50"), Decimal.new("2.00")]})
+
+      {:ok, filtered} = Results.filter(results, ["price = 1.5"])
+
+      assert Results.count(filtered) == 1
+    end
+
+    test "compares a string literal with a binary column" do
+      digest = Explorer.Series.from_list(["abc", "def"], dtype: :binary)
+      results = %Results{dataframe: Explorer.DataFrame.new(%{"digest" => digest}), files_processed: 1, total_files: 1}
+
+      {:ok, filtered} = Results.filter(results, ["digest = 'abc'"])
+
+      assert Results.count(filtered) == 1
+    end
+
     test "equality and inequality still work on string columns" do
       results = make_results(%{"revision" => ["0", "1", "2"], "id" => [1, 2, 3]})
 

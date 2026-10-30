@@ -165,6 +165,29 @@ defmodule DeltaQuery.EndToEndTest do
       refute_received {:stub_request, :get, "/east.parquet", nil, _}
     end
 
+    test "returns an error when a where literal does not match a partition column's type" do
+      config =
+        StubServer.config(%{
+          schema_string: StubServer.books_schema([{"library_id", "long"}]),
+          files: [StubServer.fixture_file("books.parquet", "lib-100.parquet", %{"library_id" => "100"})]
+        })
+
+      {:error, message} = "books" |> DeltaQuery.query() |> DeltaQuery.where("library_id = '100'") |> execute(config)
+
+      assert message =~ "does not match"
+      assert message =~ "library_id"
+      refute_received {:stub_request, :get, "/lib-100.parquet", nil, _}
+    end
+
+    test "returns an error when a where literal does not match a data column's type" do
+      config = StubServer.config()
+
+      {:error, message} = "books" |> DeltaQuery.query() |> DeltaQuery.where("book_id = '1002'") |> execute(config)
+
+      assert message =~ "does not match"
+      assert message =~ "book_id"
+    end
+
     test "downloads a file whose partition value cannot be cast and then skips it" do
       config =
         StubServer.config(%{
