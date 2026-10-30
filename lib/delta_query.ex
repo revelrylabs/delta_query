@@ -380,27 +380,8 @@ defmodule DeltaQuery do
   end
 
   @doc false
-  def extract_columns(%{metadata: %{"metaData" => %{"schemaString" => schema_string}}}) do
-    case Jason.decode(schema_string) do
-      {:ok, %{"fields" => fields}} ->
-        Enum.map(fields, fn field ->
-          %Column{
-            name: field["name"],
-            type: normalize_type(field["type"])
-          }
-        end)
-
-      _ ->
-        []
-    end
-  end
+  def extract_columns(%{metadata: metadata}), do: Column.from_metadata(metadata)
 
   @doc false
   def extract_columns(_), do: []
-
-  defp normalize_type(type) when is_binary(type), do: type
-  defp normalize_type(%{"type" => "struct"}), do: "struct"
-  defp normalize_type(%{"type" => "array"}), do: "array"
-  defp normalize_type(%{"type" => "map"}), do: "map"
-  defp normalize_type(_), do: "unknown"
 end

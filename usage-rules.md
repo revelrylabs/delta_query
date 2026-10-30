@@ -66,6 +66,8 @@ files, loads them with Explorer, applies your predicates, and returns rows as ma
   Use `dataframe` directly for anything Explorer can do.
 - `to_rows/1` returns maps with **string keys**. Values use Explorer types: `Date`,
   `NaiveDateTime`, `Decimal` for decimal columns, `nil` for null.
+- Partition columns are present in every row, cast to their type from the table schema, so
+  `select/2`, `filter/2` and `join/3` can use them like any other column.
 - `count/1`, `empty?/1`, `first/1` (`nil` when empty) and `sum/2` (`0` when the column is missing).
   `sum/2` supports integer and float columns only; decimal columns crash inside Explorer.
 - `filter/2` applies more predicates in memory. `text_search/3` is a case-insensitive substring match

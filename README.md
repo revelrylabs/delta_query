@@ -95,7 +95,7 @@ DeltaQuery.to_rows(results)
 
 ### Working with results
 
-`execute/2` returns a `%DeltaQuery.Results{}` with an `Explorer.DataFrame` inside. Row maps have string keys, and values use Explorer's types.
+`execute/2` returns a `%DeltaQuery.Results{}` with an `Explorer.DataFrame` inside. Row maps have string keys, and values use Explorer's types. Partition columns are present in every row, typed from the table schema, even though Delta stores them outside the Parquet files.
 
 ```elixir
 DeltaQuery.to_rows(results)   # => [%{"book_id" => 1001, ...}, ...]

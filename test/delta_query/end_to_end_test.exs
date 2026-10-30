@@ -94,6 +94,7 @@ defmodule DeltaQuery.EndToEndTest do
     test "skips files whose partition values do not match a where predicate" do
       config =
         StubServer.config(%{
+          schema_string: StubServer.books_schema([{"library_id", "long"}]),
           files: [
             StubServer.fixture_file("books.parquet", "lib-100.parquet", %{"library_id" => "100"}),
             StubServer.fixture_file("books.parquet", "lib-200.parquet", %{"library_id" => "200"})
@@ -108,16 +109,18 @@ defmodule DeltaQuery.EndToEndTest do
       refute_received {:stub_request, :get, "/lib-200.parquet", nil, _}
     end
 
-    for {predicate, column, matching, other} <- [
-          {"available = true", "available", "true", "false"},
-          {"category = 'Fiction'", "category", "Fiction", "Mystery"},
-          {"price > 9.5", "price", "10.0", "9.0"},
-          {"year >= 2024", "year", "2024", "2023"},
-          {"shard_id > 9007199254740992", "shard_id", "9007199254740993", "9007199254740992"}
+    for {predicate, column, type, matching, other} <- [
+          {"available = true", "available", "boolean", "true", "false"},
+          {"category = 'Fiction'", "category", "string", "Fiction", "Mystery"},
+          {"price > 9.5", "price", "double", "10.0", "9.0"},
+          {"year >= 2024", "year", "integer", "2024", "2023"},
+          {"shard_id > 9007199254740992", "shard_id", "long", "9007199254740993", "9007199254740992"},
+          {"stocked_on >= '2024-03-01'", "stocked_on", "date", "2024-03-01", "2024-02-29"}
         ] do
       test "prunes files on partition value with predicate #{predicate}" do
         config =
           StubServer.config(%{
+            schema_string: StubServer.books_schema([{unquote(column), unquote(type)}]),
             files: [
               StubServer.fixture_file("books.parquet", "match.parquet", %{unquote(column) => unquote(matching)}),
               StubServer.fixture_file("books.parquet", "other.parquet", %{unquote(column) => unquote(other)})
@@ -130,6 +133,213 @@ defmodule DeltaQuery.EndToEndTest do
         assert_received {:stub_request, :get, "/match.parquet", nil, _}
         refute_received {:stub_request, :get, "/other.parquet", nil, _}
       end
+    end
+
+    test "prunes a file whose partition value is null when the predicate needs a value" do
+      config =
+        StubServer.config(%{
+          schema_string: StubServer.books_schema([{"shelf_id", "long"}]),
+          files: [
+            StubServer.fixture_file("books.parquet", "shelf-7.parquet", %{"shelf_id" => "7"}),
+            StubServer.fixture_file("books.parquet", "shelf-null.parquet", %{"shelf_id" => nil})
+          ]
+        })
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> DeltaQuery.where("shelf_id = 7") |> execute(config)
+
+      assert %{files_processed: 1, total_files: 1} = results
+      refute_received {:stub_request, :get, "/shelf-null.parquet", nil, _}
+    end
+
+    test "returns an error when a where predicate cannot be applied to a partition column" do
+      config =
+        StubServer.config(%{
+          schema_string: StubServer.books_schema([{"region", "string"}]),
+          files: [StubServer.fixture_file("books.parquet", "east.parquet", %{"region" => "east"})]
+        })
+
+      {:error, message} = "books" |> DeltaQuery.query() |> DeltaQuery.where("region > 'a'") |> execute(config)
+
+      assert message =~ "operator >"
+      assert message =~ "region"
+      refute_received {:stub_request, :get, "/east.parquet", nil, _}
+    end
+
+    test "downloads a file whose partition value cannot be cast and then skips it" do
+      config =
+        StubServer.config(%{
+          schema_string: StubServer.books_schema([{"shelf_id", "long"}]),
+          files: [StubServer.fixture_file("books.parquet", "books.parquet", %{"shelf_id" => "seven"})]
+        })
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> DeltaQuery.where("shelf_id = 7") |> execute(config)
+
+      assert %{files_processed: 0, total_files: 1} = results
+      assert_received {:stub_request, :get, "/books.parquet", nil, _}
+    end
+
+    test "adds partition columns to every row, typed from the table schema" do
+      config =
+        StubServer.config(%{
+          schema_string:
+            StubServer.books_schema([
+              {"region", "string"},
+              {"shelf_id", "long"},
+              {"active", "boolean"},
+              {"stocked_on", "date"},
+              {"unit_price", "double"},
+              {"list_price", "decimal(10,2)"},
+              {"refreshed_at", "timestamp"},
+              {"checked_at", "timestamp_ntz"},
+              {"aisle", "integer"},
+              {"rack", "short"},
+              {"bin", "byte"},
+              {"weight", "float"}
+            ]),
+          files: [
+            StubServer.fixture_file("books.parquet", "east.parquet", %{
+              "region" => "east",
+              "shelf_id" => "7",
+              "active" => "true",
+              "stocked_on" => "2024-03-01",
+              "unit_price" => "9.5",
+              "list_price" => "12.50",
+              "refreshed_at" => "2024-03-01 10:15:00",
+              "checked_at" => "2024-03-02 08:00:00",
+              "aisle" => "12",
+              "rack" => "3",
+              "bin" => "1",
+              "weight" => "1.5"
+            })
+          ]
+        })
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> execute(config)
+
+      assert DeltaQuery.count(results) == 3
+
+      assert %{
+               "region" => "east",
+               "shelf_id" => 7,
+               "active" => true,
+               "stocked_on" => ~D[2024-03-01],
+               "unit_price" => 9.5,
+               "list_price" => list_price,
+               "refreshed_at" => ~N[2024-03-01 10:15:00.000000],
+               "checked_at" => ~N[2024-03-02 08:00:00.000000],
+               "aisle" => 12,
+               "rack" => 3,
+               "bin" => 1,
+               "weight" => 1.5,
+               "title" => "The Great Gatsby"
+             } = DeltaQuery.first(results)
+
+      assert Decimal.equal?(list_price, Decimal.new("12.50"))
+
+      assert %{
+               "region" => :string,
+               "shelf_id" => {:s, 64},
+               "active" => :boolean,
+               "stocked_on" => :date,
+               "unit_price" => {:f, 64},
+               "list_price" => {:decimal, 10, 2},
+               "refreshed_at" => {:naive_datetime, :microsecond},
+               "checked_at" => {:naive_datetime, :microsecond},
+               "aisle" => {:s, 32},
+               "rack" => {:s, 16},
+               "bin" => {:s, 8},
+               "weight" => {:f, 32}
+             } = DataFrame.dtypes(results.dataframe)
+    end
+
+    test "keeps partition columns available to select/2 and filter/2" do
+      config =
+        StubServer.config(%{
+          schema_string: StubServer.books_schema([{"shelf_id", "long"}]),
+          files: [
+            StubServer.fixture_file("books.parquet", "shelf-7.parquet", %{"shelf_id" => "7"}),
+            StubServer.fixture_file("books.parquet", "shelf-8.parquet", %{"shelf_id" => "8"})
+          ]
+        })
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> DeltaQuery.select(["shelf_id", "title"]) |> execute(config)
+
+      assert DataFrame.names(results.dataframe) == ["shelf_id", "title"]
+      assert DeltaQuery.count(results) == 6
+
+      assert {:ok, shelf_7} = DeltaQuery.filter(results, ["shelf_id = 7"])
+      assert DeltaQuery.count(shelf_7) == 3
+    end
+
+    test "keeps a null partition value as nil" do
+      config =
+        StubServer.config(%{
+          schema_string: StubServer.books_schema([{"shelf_id", "long"}]),
+          files: [StubServer.fixture_file("books.parquet", "books.parquet", %{"shelf_id" => nil})]
+        })
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> execute(config)
+
+      assert DataFrame.dtypes(results.dataframe)["shelf_id"] == {:s, 64}
+      assert Enum.map(DeltaQuery.to_rows(results), & &1["shelf_id"]) == [nil, nil, nil]
+    end
+
+    for {value, expected} <- [{"NaN", :nan}, {"Infinity", :infinity}, {"-Infinity", :neg_infinity}] do
+      test "keeps a #{value} float partition value" do
+        config =
+          StubServer.config(%{
+            schema_string: StubServer.books_schema([{"weight", "double"}]),
+            files: [StubServer.fixture_file("books.parquet", "books.parquet", %{"weight" => unquote(value)})]
+          })
+
+        {:ok, results} = "books" |> DeltaQuery.query() |> execute(config)
+
+        assert Enum.map(DeltaQuery.to_rows(results), & &1["weight"]) == List.duplicate(unquote(expected), 3)
+      end
+    end
+
+    test "keeps a partition column that is not in the table schema as a string" do
+      config =
+        StubServer.config(%{files: [StubServer.fixture_file("books.parquet", "books.parquet", %{"shelf_id" => "7"})]})
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> execute(config)
+
+      assert %{"shelf_id" => "7"} = DeltaQuery.first(results)
+    end
+
+    test "does not overwrite a column the file already carries with its partition value" do
+      config =
+        StubServer.config(%{files: [StubServer.fixture_file("books.parquet", "books.parquet", %{"library_id" => "999"})]})
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> execute(config)
+
+      assert Enum.map(DeltaQuery.to_rows(results), & &1["library_id"]) == [100, 100, 100]
+    end
+
+    test "skips a file whose partition value does not match its schema type" do
+      config =
+        StubServer.config(%{
+          schema_string: StubServer.books_schema([{"shelf_id", "long"}]),
+          files: [StubServer.fixture_file("books.parquet", "books.parquet", %{"shelf_id" => "seven"})]
+        })
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> execute(config)
+
+      assert DeltaQuery.empty?(results)
+      assert %{files_processed: 0, total_files: 1} = results
+    end
+
+    test "skips a file whose partition value is out of range for its schema type" do
+      config =
+        StubServer.config(%{
+          schema_string: StubServer.books_schema([{"rack", "short"}]),
+          files: [StubServer.fixture_file("books.parquet", "books.parquet", %{"rack" => "70000"})]
+        })
+
+      {:ok, results} = "books" |> DeltaQuery.query() |> execute(config)
+
+      assert DeltaQuery.empty?(results)
+      assert %{files_processed: 0, total_files: 1} = results
     end
 
     test "skips files that fail to download and reports the shortfall in the counts" do
