@@ -284,6 +284,20 @@ defmodule DeltaQuery.EndToEndTest do
       assert Enum.map(DeltaQuery.to_rows(results), & &1["shelf_id"]) == [nil, nil, nil]
     end
 
+    for {value, expected} <- [{"NaN", :nan}, {"Infinity", :infinity}, {"-Infinity", :neg_infinity}] do
+      test "keeps a #{value} float partition value" do
+        config =
+          StubServer.config(%{
+            schema_string: StubServer.books_schema([{"weight", "double"}]),
+            files: [StubServer.fixture_file("books.parquet", "books.parquet", %{"weight" => unquote(value)})]
+          })
+
+        {:ok, results} = "books" |> DeltaQuery.query() |> execute(config)
+
+        assert Enum.map(DeltaQuery.to_rows(results), & &1["weight"]) == List.duplicate(unquote(expected), 3)
+      end
+    end
+
     test "keeps a partition column that is not in the table schema as a string" do
       config =
         StubServer.config(%{files: [StubServer.fixture_file("books.parquet", "books.parquet", %{"shelf_id" => "7"})]})

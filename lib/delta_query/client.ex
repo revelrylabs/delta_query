@@ -450,6 +450,10 @@ defmodule DeltaQuery.Client do
     end
   end
 
+  defp parse_partition_value("NaN", {:f, _}), do: {:ok, :nan}
+  defp parse_partition_value("Infinity", {:f, _}), do: {:ok, :infinity}
+  defp parse_partition_value("-Infinity", {:f, _}), do: {:ok, :neg_infinity}
+
   defp parse_partition_value(value, {:f, _}) when is_binary(value) do
     case Float.parse(value) do
       {float, ""} -> {:ok, float}
